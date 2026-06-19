@@ -79,15 +79,16 @@
         <button class="primary" id="save" disabled>Save changes</button>
       </div>
       <table>
-        <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th><th>Region</th></tr></thead>
+        <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th><th>Region</th><th></th></tr></thead>
         <tbody id="vmRows"></tbody>
       </table>
     </div>
 
     <div class="card">
       <details id="addPanel">
-        <summary>+ Add a VM</summary>
+        <summary id="formSummary">+ Add a VM</summary>
         <form id="addForm" style="margin-top:12px">
+          <input type="hidden" name="editIndex" value="">
           <div class="grid">
             <div><label>VM name</label><input name="vmname" required placeholder="e.g. NakodaFx30001"></div>
             <div><label>MT5 login</label><input name="login" type="number" required placeholder="30001"></div>
@@ -105,7 +106,8 @@
             <div><label>Reuse IP name (if reusing)</label><input name="pipname" placeholder="auto: <name>-pip"></div>
             <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
           </div>
-          <div style="margin-top:12px"><button class="primary" type="submit">Add to list</button>
+          <div style="margin-top:12px"><button class="primary" type="submit" id="formSubmit">Add to list</button>
+            <button type="button" id="cancelEdit" hidden>Cancel</button>
             <span class="mut">— then click <b>Save changes</b>.</span></div>
         </form>
       </details>
@@ -184,19 +186,25 @@ function render(){
       `<td>${esc(fld(it,'name'))}</td><td>${esc(fld(it,'mt5.login'))}</td>`+
       `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
       `<td>${esc(fld(it,'publicIp.mode','create'))}</td>`+
-      `<td>${esc(fld(it,'azure.location','centralindia'))}</td>`;
+      `<td>${esc(fld(it,'azure.location','centralindia'))}</td>`+
+      `<td class="c"><button type="button" data-edit="${i}">Edit</button></td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
     cb.closest('tr').classList.toggle('off',!cb.checked); markDirty(true);
   }));
+  tb.querySelectorAll('button[data-edit]').forEach(b=>b.addEventListener('click',()=>editVm(+b.dataset.edit)));
+}
+
+function syncEnabled(){
+  document.querySelectorAll('#vmRows input[type=checkbox]').forEach(cb=>{
+    vmsNode.items[+cb.dataset.i].set('enabled', cb.checked);
+  });
 }
 
 async function save(){
   if(!doc) return;
-  document.querySelectorAll('#vmRows input[type=checkbox]').forEach(cb=>{
-    vmsNode.items[+cb.dataset.i].set('enabled', cb.checked);
-  });
+  syncEnabled();
   log('Saving …');
   const body={message:'dashboard: update fleet deploy/config',content:b64encode(doc.toString()),sha,branch:BRANCH};
   let r; try{ r=await fetch(API,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)}); }
@@ -207,26 +215,69 @@ async function save(){
   log('Saved · commit '+j.commit.sha.slice(0,7)+' · the next 08:30 IST run will use it.','ok');
 }
 
-function addVm(e){
+// Write the form's fields onto a VM map node (shared by add + edit). Region
+// Central India => remove any azure override (inherit common.azure); UK South
+// => write the preset. Cleared optional fields are removed.
+function applyFields(item, f){
+  const name=f.vmname.value.trim();
+  item.set('name', name);
+  item.setIn(['mt5','login'], Number(f.login.value));
+  item.setIn(['mt5','password'], f.password.value);
+  item.setIn(['mt5','server'], f.server.value.trim());
+  item.setIn(['env','KITE_USER_ID'], f.kite.value.trim());
+  item.setIn(['publicIp','mode'], f.pipmode.value);
+  if(f.pipmode.value==='reuse') item.setIn(['publicIp','name'], f.pipname.value.trim()||name+'-pip');
+  else if(item.hasIn(['publicIp','name'])) item.deleteIn(['publicIp','name']);
+  if(f.branch.value.trim()) item.setIn(['app','branch'], f.branch.value.trim());
+  else if(item.hasIn(['app','branch'])) item.deleteIn(['app','branch']);
+  const preset=REGION_PRESETS[f.region.value];
+  if(preset) item.set('azure', doc.createNode(preset));
+  else if(item.has('azure')) item.delete('azure');   // Central India = inherit common.azure
+}
+
+function submitForm(e){
   e.preventDefault(); const f=e.target;
   const name=f.vmname.value.trim(); if(!name) return;
-  const mode=f.pipmode.value;
-  const vm={ name, enabled:true,
-    publicIp: mode==='reuse' ? {mode,name:(f.pipname.value.trim()||name+'-pip')} : {mode},
-    mt5:{ login:Number(f.login.value), password:f.password.value, server:f.server.value.trim() },
-    env:{ KITE_USER_ID: f.kite.value.trim() } };
-  if(f.branch.value.trim()) vm.app={ branch:f.branch.value.trim() };
-  const preset=REGION_PRESETS[f.region.value]; if(preset) vm.azure={...preset};
-  vmsNode.add(doc.createNode(vm));
-  render(); f.reset(); $('#addPanel').open=false; markDirty(true);
-  log('Added '+name+' to the list — click Save changes to commit.','ok');
+  syncEnabled();                                      // keep unsaved deploy toggles
+  const idx=f.editIndex.value; let verb;
+  if(idx===''){ const item=doc.createNode({}); item.set('enabled',true); applyFields(item,f); vmsNode.add(item); verb='Added'; }
+  else { applyFields(vmsNode.items[+idx],f); verb='Updated'; }
+  render(); resetForm(); $('#addPanel').open=false; markDirty(true);
+  log(verb+' '+name+' — click Save changes to commit.','ok');
+}
+
+function editVm(i){
+  const it=vmsNode.items[i], f=$('#addForm');
+  f.vmname.value=fld(it,'name');
+  f.login.value=fld(it,'mt5.login');
+  f.password.value=fld(it,'mt5.password');
+  f.server.value=fld(it,'mt5.server');
+  f.kite.value=fld(it,'env.KITE_USER_ID');
+  f.pipmode.value=fld(it,'publicIp.mode','create');
+  f.pipname.value=fld(it,'publicIp.name');
+  f.branch.value=fld(it,'app.branch');
+  f.region.value=fld(it,'azure.location','centralindia');
+  f.editIndex.value=String(i);
+  $('#formSubmit').textContent='Update VM';
+  $('#cancelEdit').hidden=false;
+  $('#formSummary').textContent='Editing '+fld(it,'name');
+  $('#addPanel').open=true;
+  f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function resetForm(){
+  const f=$('#addForm'); f.reset(); f.editIndex.value='';   // f.reset() restores Region to Central India (first option)
+  $('#formSubmit').textContent='Add to list';
+  $('#cancelEdit').hidden=true;
+  $('#formSummary').textContent='+ Add a VM';
 }
 
 $('#saveTok').onclick=()=>{ const v=$('#tok').value.trim(); if(!v) return; localStorage.setItem('ghpat',v); $('#tok').value=''; refreshTokUI(); load(); };
 $('#forget').onclick=()=>{ localStorage.removeItem('ghpat'); $('#app').hidden=true; refreshTokUI(); log('Token forgotten.'); };
 $('#reload').onclick=load;
 $('#save').onclick=save;
-$('#addForm').addEventListener('submit',addVm);
+$('#addForm').addEventListener('submit',submitForm);
+$('#cancelEdit').addEventListener('click',resetForm);
 window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
 
 refreshTokUI(); load();
