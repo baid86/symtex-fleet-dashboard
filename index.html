@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SYMTEX-CIN Trading Fleet</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2029; --line:#2a323d; --fg:#e6e9ef; --mut:#9aa6b2;
+          --ok:#3fb950; --err:#f85149; --accent:#2f81f7; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  .wrap { max-width:980px; margin:0 auto; padding:24px 18px 60px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:18px; }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line);
+           background:#222b36; color:var(--fg); cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  input, select { font:inherit; padding:7px 9px; border-radius:7px; border:1px solid var(--line);
+                  background:#0d1117; color:var(--fg); width:100%; }
+  label { display:block; font-size:13px; color:var(--mut); margin:0 0 4px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
+  td.c, th.c { text-align:center; width:64px; }
+  tr.off td:not(.c) { opacity:.45; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .grow { flex:1; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+  .grid .full { grid-column:1/-1; }
+  details summary { cursor:pointer; font-weight:600; padding:6px 0; }
+  #log { background:#0a0d11; border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+         white-space:pre-wrap; font:13px/1.5 ui-monospace,Consolas,monospace; max-height:220px; overflow:auto; margin-top:6px; }
+  .ok{color:var(--ok)} .err{color:var(--err)} .mut{color:var(--mut)}
+  code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:13px}
+  a{color:var(--accent)}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--mut)}
+  .pill.on{color:var(--ok);border-color:var(--ok)} .pill.no{color:var(--err);border-color:var(--err)}
+  ol{margin:6px 0 0 18px;padding:0} ol li{margin:4px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SYMTEX-CIN Trading Fleet</h1>
+  <p class="sub">Choose which VMs deploy at the next <b>08:30 IST</b> run, or add a new one. Changes save to <code>config.yaml</code>.</p>
+
+  <!-- TOKEN -->
+  <div class="card" id="tokenCard">
+    <div class="toolbar">
+      <b>Access token</b>
+      <span class="pill" id="tokState">not set</span>
+      <span class="grow"></span>
+      <button id="forget" hidden>Forget token</button>
+    </div>
+    <div id="tokSetup">
+      <p class="mut" style="margin-top:0">Paste a GitHub fine-grained token (stored only in this browser). One-time setup:</p>
+      <ol>
+        <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a></li>
+        <li>Resource owner: <code>baid86</code> · Repository access: <b>Only select repositories</b> → <code>symtex-cin-trading-vm</code></li>
+        <li>Permissions → Repository → <b>Contents: Read and write</b> (Metadata read-only is added automatically)</li>
+        <li>Pick an expiry, Generate, copy, paste below.</li>
+      </ol>
+      <div class="grid" style="margin-top:10px">
+        <div class="full"><input id="tok" type="password" placeholder="github_pat_..." autocomplete="off"></div>
+      </div>
+      <div style="margin-top:10px"><button class="primary" id="saveTok">Save token &amp; load</button></div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app" hidden>
+    <div class="card">
+      <div class="toolbar">
+        <button id="reload">Reload</button>
+        <span class="grow"></span>
+        <span class="mut" id="dirty"></span>
+        <button class="primary" id="save" disabled>Save changes</button>
+      </div>
+      <table>
+        <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th></tr></thead>
+        <tbody id="vmRows"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <details id="addPanel">
+        <summary>+ Add a VM</summary>
+        <form id="addForm" style="margin-top:12px">
+          <div class="grid">
+            <div><label>VM name</label><input name="vmname" required placeholder="e.g. NakodaFx30001"></div>
+            <div><label>MT5 login</label><input name="login" type="number" required placeholder="30001"></div>
+            <div><label>MT5 password</label><input name="password" required></div>
+            <div><label>MT5 server</label><input name="server" list="servers" required placeholder="NakodaFX-Trade"></div>
+            <div><label>Kite user ID</label><input name="kite" placeholder="WB4977"></div>
+            <div>
+              <label>Public IP</label>
+              <select name="pipmode"><option value="create">create new</option><option value="reuse">reuse existing</option></select>
+            </div>
+            <div><label>Reuse IP name (if reusing)</label><input name="pipname" placeholder="auto: <name>-pip"></div>
+            <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
+          </div>
+          <div style="margin-top:12px"><button class="primary" type="submit">Add to list</button>
+            <span class="mut">— then click <b>Save changes</b>.</span></div>
+        </form>
+      </details>
+    </div>
+  </div>
+
+  <div id="log" class="mut">Ready.</div>
+</div>
+
+<datalist id="servers">
+  <option>PDMBulls-Server</option><option>SyntexCapital-Server</option><option>QuorionexMarkets-Live</option>
+  <option>LotusFX-Live</option><option>FutureFundInvestment-Server</option><option>NakodaFX-Trade</option>
+  <option>TradeSolutions-Server</option>
+</datalist>
+
+<script type="module">
+import YAML from 'https://esm.sh/yaml@2';
+
+const REPO = 'baid86/symtex-cin-trading-vm';
+const PATH = 'config.yaml';
+const BRANCH = 'main';
+const API = `https://api.github.com/repos/${REPO}/contents/${encodeURIComponent(PATH)}`;
+
+let doc = null, sha = null, vmsNode = null, dirty = false;
+const $ = s => document.querySelector(s);
+const log = (m, cls='mut') => { const e=$('#log'); e.innerHTML = `<span class="${cls}">${m}</span>`; };
+
+const tok = () => localStorage.getItem('ghpat') || '';
+function refreshTokUI(){
+  const has = !!tok();
+  $('#tokState').textContent = has ? 'set' : 'not set';
+  $('#tokState').className = 'pill ' + (has?'on':'no');
+  $('#forget').hidden = !has;
+  $('#tokSetup').hidden = has;
+}
+function markDirty(d){ dirty=d; $('#save').disabled=!d; $('#dirty').textContent = d?'unsaved changes':''; }
+
+function b64decode(b){ const bin=atob(b.replace(/\s/g,'')); return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0))); }
+function b64encode(s){ const by=new TextEncoder().encode(s); let bin=''; for(const x of by) bin+=String.fromCharCode(x); return btoa(bin); }
+function H(){ return {Authorization:'Bearer '+tok(),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}; }
+const esc = s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fld = (it,p,d='') => { const v=it.getIn(p.split('.')); return (v===undefined||v===null)?d:v; };
+
+async function load(){
+  if(!tok()){ refreshTokUI(); return; }
+  log('Loading config.yaml …');
+  let r; try{ r=await fetch(`${API}?ref=${BRANCH}`,{headers:H()}); }catch(e){ return log('Network error: '+e.message,'err'); }
+  if(r.status===401) return log('Token rejected (401). Re-check the token & its repo access.','err');
+  if(r.status===404) return log('Not found (404). Token must grant Contents access to '+REPO+'.','err');
+  if(!r.ok) return log('Load failed '+r.status+': '+await r.text(),'err');
+  const j=await r.json(); sha=j.sha;
+  doc=YAML.parseDocument(b64decode(j.content));
+  vmsNode=doc.get('vms');
+  if(!vmsNode||!vmsNode.items) return log('config.yaml has no vms: list.','err');
+  render(); $('#app').hidden=false; markDirty(false);
+  log('Loaded '+vmsNode.items.length+' VMs.','ok');
+}
+
+function render(){
+  const tb=$('#vmRows'); tb.innerHTML='';
+  vmsNode.items.forEach((it,i)=>{
+    const on = it.has('enabled') ? !!it.get('enabled') : true;
+    const tr=document.createElement('tr'); if(!on) tr.className='off';
+    tr.innerHTML=`<td class="c"><input type="checkbox" data-i="${i}" ${on?'checked':''}></td>`+
+      `<td>${esc(fld(it,'name'))}</td><td>${esc(fld(it,'mt5.login'))}</td>`+
+      `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
+      `<td>${esc(fld(it,'publicIp.mode','create'))}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
+    cb.closest('tr').classList.toggle('off',!cb.checked); markDirty(true);
+  }));
+}
+
+async function save(){
+  if(!doc) return;
+  document.querySelectorAll('#vmRows input[type=checkbox]').forEach(cb=>{
+    vmsNode.items[+cb.dataset.i].set('enabled', cb.checked);
+  });
+  log('Saving …');
+  const body={message:'dashboard: update fleet deploy/config',content:b64encode(doc.toString()),sha,branch:BRANCH};
+  let r; try{ r=await fetch(API,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+  catch(e){ return log('Network error: '+e.message,'err'); }
+  if(r.status===409) return log('Conflict (409): file changed on GitHub. Click Reload, then redo.','err');
+  if(!r.ok) return log('Save failed '+r.status+': '+await r.text(),'err');
+  const j=await r.json(); sha=j.content.sha; markDirty(false);
+  log('Saved · commit '+j.commit.sha.slice(0,7)+' · the next 08:30 IST run will use it.','ok');
+}
+
+function addVm(e){
+  e.preventDefault(); const f=e.target;
+  const name=f.vmname.value.trim(); if(!name) return;
+  const mode=f.pipmode.value;
+  const vm={ name, enabled:true,
+    publicIp: mode==='reuse' ? {mode,name:(f.pipname.value.trim()||name+'-pip')} : {mode},
+    mt5:{ login:Number(f.login.value), password:f.password.value, server:f.server.value.trim() },
+    env:{ KITE_USER_ID: f.kite.value.trim() } };
+  if(f.branch.value.trim()) vm.app={ branch:f.branch.value.trim() };
+  vmsNode.add(doc.createNode(vm));
+  render(); f.reset(); $('#addPanel').open=false; markDirty(true);
+  log('Added '+name+' to the list — click Save changes to commit.','ok');
+}
+
+$('#saveTok').onclick=()=>{ const v=$('#tok').value.trim(); if(!v) return; localStorage.setItem('ghpat',v); $('#tok').value=''; refreshTokUI(); load(); };
+$('#forget').onclick=()=>{ localStorage.removeItem('ghpat'); $('#app').hidden=true; refreshTokUI(); log('Token forgotten.'); };
+$('#reload').onclick=load;
+$('#save').onclick=save;
+$('#addForm').addEventListener('submit',addVm);
+window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
+
+refreshTokUI(); load();
+</script>
+</body>
+</html>
