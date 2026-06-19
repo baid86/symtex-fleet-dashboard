@@ -79,7 +79,7 @@
         <button class="primary" id="save" disabled>Save changes</button>
       </div>
       <table>
-        <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th></tr></thead>
+        <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th><th>Region</th></tr></thead>
         <tbody id="vmRows"></tbody>
       </table>
     </div>
@@ -97,6 +97,10 @@
             <div>
               <label>Public IP</label>
               <select name="pipmode"><option value="create">create new</option><option value="reuse">reuse existing</option></select>
+            </div>
+            <div>
+              <label>Region</label>
+              <select name="region"><option value="centralindia">Central India</option><option value="uksouth">UK South</option></select>
             </div>
             <div><label>Reuse IP name (if reusing)</label><input name="pipname" placeholder="auto: <name>-pip"></div>
             <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
@@ -124,6 +128,17 @@ const REPO = 'baid86/symtex-cin-trading-vm';
 const PATH = 'config.yaml';
 const BRANCH = 'main';
 const API = `https://api.github.com/repos/${REPO}/contents/${encodeURIComponent(PATH)}`;
+
+// Per-VM azure overrides for non-default regions. Central India = no override
+// (inherits common.azure). UK South points at the UK snapshot + UK networking.
+const REGION_PRESETS = {
+  uksouth: {
+    location: 'uksouth',
+    snapshot: 'tradesolutions133257-snap-20260619-uksouth',
+    subnetId: '/subscriptions/6e3b74b4-7f98-4329-9836-34690746ef53/resourceGroups/SYMTEX-CIN-RG/providers/Microsoft.Network/virtualNetworks/symtex-cin-uk-vnet/subnets/default',
+    nsg: 'symtex-cin-uk-nsg'
+  }
+};
 
 let doc = null, sha = null, vmsNode = null, dirty = false;
 const $ = s => document.querySelector(s);
@@ -168,7 +183,8 @@ function render(){
     tr.innerHTML=`<td class="c"><input type="checkbox" data-i="${i}" ${on?'checked':''}></td>`+
       `<td>${esc(fld(it,'name'))}</td><td>${esc(fld(it,'mt5.login'))}</td>`+
       `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
-      `<td>${esc(fld(it,'publicIp.mode','create'))}</td>`;
+      `<td>${esc(fld(it,'publicIp.mode','create'))}</td>`+
+      `<td>${esc(fld(it,'azure.location','centralindia'))}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
@@ -200,6 +216,7 @@ function addVm(e){
     mt5:{ login:Number(f.login.value), password:f.password.value, server:f.server.value.trim() },
     env:{ KITE_USER_ID: f.kite.value.trim() } };
   if(f.branch.value.trim()) vm.app={ branch:f.branch.value.trim() };
+  const preset=REGION_PRESETS[f.region.value]; if(preset) vm.azure={...preset};
   vmsNode.add(doc.createNode(vm));
   render(); f.reset(); $('#addPanel').open=false; markDirty(true);
   log('Added '+name+' to the list — click Save changes to commit.','ok');
