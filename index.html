@@ -101,7 +101,7 @@
             </div>
             <div>
               <label>Region</label>
-              <select name="region"><option value="centralindia">Central India</option><option value="uksouth">UK South</option></select>
+              <select name="region"><option value="centralindia">Central India</option><option value="uksouth">UK South</option><option value="westindia">West India (Mumbai)</option></select>
             </div>
             <div><label>Reuse IP name (if reusing)</label><input name="pipname" placeholder="auto: <name>-pip"></div>
             <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
@@ -132,13 +132,24 @@ const BRANCH = 'main';
 const API = `https://api.github.com/repos/${REPO}/contents/${encodeURIComponent(PATH)}`;
 
 // Per-VM azure overrides for non-default regions. Central India = no override
-// (inherits common.azure). UK South points at the UK snapshot + UK networking.
+// (inherits common.azure). UK South / West India point at that region's snapshot
+// + networking.
+// NOTE: the *VM size* is NOT set here -- the provisioner picks it by region via
+// config.yaml `vmSizeByRegion` (UK South has no B-series -> Standard_D2ns_v6;
+// West India has only the original B-series, not Basv2 -> Standard_B2ms). Keep
+// size selection in one place (the provisioner).
 const REGION_PRESETS = {
   uksouth: {
     location: 'uksouth',
     snapshot: 'tradesolutions133257-snap-20260619-uksouth',
     subnetId: '/subscriptions/6e3b74b4-7f98-4329-9836-34690746ef53/resourceGroups/SYMTEX-CIN-RG/providers/Microsoft.Network/virtualNetworks/symtex-cin-uk-vnet/subnets/default',
     nsg: 'symtex-cin-uk-nsg'
+  },
+  westindia: {
+    location: 'westindia',
+    snapshot: 'tradesolutions133257-snap-20260619-westindia',
+    subnetId: '/subscriptions/6e3b74b4-7f98-4329-9836-34690746ef53/resourceGroups/SYMTEX-CIN-RG/providers/Microsoft.Network/virtualNetworks/symtex-cin-west-vnet/subnets/default',
+    nsg: 'symtex-cin-west-nsg'
   }
 };
 
