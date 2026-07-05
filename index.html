@@ -255,8 +255,12 @@ function applyFields(item, f){
   item.setIn(['mt5','password'], f.password.value);
   item.setIn(['mt5','server'], f.server.value.trim());
   item.setIn(['env','KITE_USER_ID'], f.kite.value.trim());
+  const isAws = f.region.value==='mumbai-aws';
   item.setIn(['publicIp','mode'], f.pipmode.value);
-  if(f.pipmode.value==='reuse') item.setIn(['publicIp','name'], f.pipname.value.trim()||name+'-pip');
+  // AWS auto-reuses an Elastic IP tagged <name>-eip; the Azure "-pip" reuse-name
+  // would never match it, so never write publicIp.name for a Mumbai (AWS) VM --
+  // the provisioner reuses <name>-eip on its own.
+  if(!isAws && f.pipmode.value==='reuse') item.setIn(['publicIp','name'], f.pipname.value.trim()||name+'-pip');
   else if(item.hasIn(['publicIp','name'])) item.deleteIn(['publicIp','name']);
   if(f.branch.value.trim()) item.setIn(['app','branch'], f.branch.value.trim());
   else if(item.hasIn(['app','branch'])) item.deleteIn(['app','branch']);
