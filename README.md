@@ -8,6 +8,8 @@ It lets you:
 - **Check / uncheck** which VMs deploy at the scheduled 08:30 IST provision run (toggles a per-VM
   `enabled` flag in `config.yaml`).
 - **Add a new VM** via a form.
+- **Run the provision / destroy workflows** on demand (via the GitHub Actions API) — no need to open
+  the Actions tab.
 
 ## Regions
 The Add/Edit form's **Region** selector chooses where a VM runs:
@@ -29,5 +31,6 @@ the token each operator supplies.
 ## One-time token setup
 1. <https://github.com/settings/personal-access-tokens/new>
 2. Resource owner `baid86`; Repository access → **Only select repositories** → `symtex-cin-trading-vm`
-3. Permissions → Repository → **Contents: Read and write**
+3. Permissions → Repository → **Contents: Read and write** + **Actions: Read and write** (Actions is
+   needed to trigger the provision/destroy workflows from the dashboard)
 4. Generate, copy, paste it into the dashboard.

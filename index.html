@@ -59,7 +59,7 @@
       <ol>
         <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a></li>
         <li>Resource owner: <code>baid86</code> · Repository access: <b>Only select repositories</b> → <code>symtex-cin-trading-vm</code></li>
-        <li>Permissions → Repository → <b>Contents: Read and write</b> (Metadata read-only is added automatically)</li>
+        <li>Permissions → Repository → <b>Contents: Read and write</b> + <b>Actions: Read and write</b> (Actions lets you run the provision/destroy workflows from here). Metadata read-only is added automatically.</li>
         <li>Pick an expiry, Generate, copy, paste below.</li>
       </ol>
       <div class="grid" style="margin-top:10px">
@@ -82,6 +82,23 @@
         <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th><th>Region</th><th></th></tr></thead>
         <tbody id="vmRows"></tbody>
       </table>
+    </div>
+
+    <!-- RUN WORKFLOWS -->
+    <div class="card">
+      <div class="toolbar">
+        <b>Run workflows</b>
+        <span class="grow"></span>
+        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px;width:auto"><input type="checkbox" id="dryrun" style="width:auto"> dry run</label>
+      </div>
+      <div class="grid">
+        <div><label>Only this VM (blank = all enabled)</label><input id="onlyVm" placeholder="blank = all enabled VMs"></div>
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <button class="primary" id="runProvision" type="button">▶ Provision now</button>
+          <button id="runDestroy" type="button">■ Destroy now</button>
+        </div>
+      </div>
+      <p class="mut" style="margin:10px 0 0;font-size:13px">Triggers the GitHub Actions workflow on <code>main</code> — no need to open GitHub. Requires the token to also grant <b>Actions: Read and write</b>. <a href="https://github.com/baid86/symtex-cin-trading-vm/actions" target="_blank" rel="noopener">View runs →</a></p>
     </div>
 
     <div class="card">
@@ -300,6 +317,24 @@ $('#reload').onclick=load;
 $('#save').onclick=save;
 $('#addForm').addEventListener('submit',submitForm);
 $('#cancelEdit').addEventListener('click',resetForm);
+
+// Trigger a GitHub Actions workflow (workflow_dispatch) so the operator can run
+// provision/destroy without opening GitHub. Needs the token's Actions:write scope.
+async function dispatch(workflow, inputs, label){
+  if(!tok()) return log('Set a token first.','err');
+  if(!confirm(`Run the "${label}" workflow now on ${BRANCH}?`)) return;
+  log(`Triggering ${label} …`);
+  const url=`https://api.github.com/repos/${REPO}/actions/workflows/${workflow}/dispatches`;
+  let r; try{ r=await fetch(url,{method:'POST',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify({ref:BRANCH,inputs})}); }
+  catch(e){ return log('Network error: '+e.message,'err'); }
+  if(r.status===204) return log(`${label} triggered ✓ — <a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">view run →</a>`,'ok');
+  if(r.status===403) return log('403 — the token lacks Actions permission. Regenerate it with <b>Actions: Read and write</b> (see token setup).','err');
+  if(r.status===404) return log('404 — workflow not found or the token has no Actions access.','err');
+  return log(`Trigger failed ${r.status}: `+esc(await r.text()),'err');
+}
+$('#runProvision').onclick=()=>{ const inputs={dry_run:String($('#dryrun').checked)}; const only=$('#onlyVm').value.trim(); if(only) inputs.only=only; dispatch('provision-vm.yml',inputs,'Provision'); };
+$('#runDestroy').onclick=()=>dispatch('destroy-vm.yml',{dry_run:String($('#dryrun').checked)},'Destroy');
+
 window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
 
 refreshTokUI(); load();
