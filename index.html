@@ -113,14 +113,9 @@
             <div><label>MT5 server</label><input name="server" list="servers" required placeholder="NakodaFX-Trade"></div>
             <div><label>Kite user ID</label><input name="kite" placeholder="WB4977"></div>
             <div>
-              <label>Public IP</label>
-              <select name="pipmode"><option value="create">create new</option><option value="reuse">reuse existing</option></select>
-            </div>
-            <div>
               <label>Region</label>
               <select name="region"><option value="centralindia">Central India (Azure)</option><option value="uksouth">UK South (Azure)</option><option value="westindia">West India (Azure)</option><option value="mumbai-aws">Mumbai (AWS)</option></select>
             </div>
-            <div><label>Reuse IP name (if reusing)</label><input name="pipname" placeholder="auto: <name>-pip"></div>
             <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
           </div>
           <div style="margin-top:12px"><button class="primary" type="submit" id="formSubmit">Add to list</button>
@@ -215,7 +210,7 @@ function render(){
     tr.innerHTML=`<td class="c"><input type="checkbox" data-i="${i}" ${on?'checked':''}></td>`+
       `<td>${esc(fld(it,'name'))}</td><td>${esc(fld(it,'mt5.login'))}</td>`+
       `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
-      `<td>${esc(fld(it,'publicIp.mode','create'))}</td>`+
+      `<td>${esc(fld(it,'name') + (isMumbaiAws ? '-eip' : '-pip'))}</td>`+
       `<td>${esc(region)}</td>`+
       `<td class="c"><button type="button" data-edit="${i}">Edit</button></td>`;
     tb.appendChild(tr);
@@ -255,13 +250,9 @@ function applyFields(item, f){
   item.setIn(['mt5','password'], f.password.value);
   item.setIn(['mt5','server'], f.server.value.trim());
   item.setIn(['env','KITE_USER_ID'], f.kite.value.trim());
-  const isAws = f.region.value==='mumbai-aws';
-  item.setIn(['publicIp','mode'], f.pipmode.value);
-  // AWS auto-reuses an Elastic IP tagged <name>-eip; the Azure "-pip" reuse-name
-  // would never match it, so never write publicIp.name for a Mumbai (AWS) VM --
-  // the provisioner reuses <name>-eip on its own.
-  if(!isAws && f.pipmode.value==='reuse') item.setIn(['publicIp','name'], f.pipname.value.trim()||name+'-pip');
-  else if(item.hasIn(['publicIp','name'])) item.deleteIn(['publicIp','name']);
+  // Public IP is automatic: the provisioner reuses <name>-pip (Azure) / <name>-eip
+  // (AWS) if it exists, else creates it -- so no per-VM publicIp block is needed.
+  if(item.has('publicIp')) item.delete('publicIp');
   if(f.branch.value.trim()) item.setIn(['app','branch'], f.branch.value.trim());
   else if(item.hasIn(['app','branch'])) item.deleteIn(['app','branch']);
   // Region routing. Mumbai (AWS) => write `city: Mumbai` (the provisioner routes
@@ -296,8 +287,6 @@ function editVm(i){
   f.password.value=fld(it,'mt5.password');
   f.server.value=fld(it,'mt5.server');
   f.kite.value=fld(it,'env.KITE_USER_ID');
-  f.pipmode.value=fld(it,'publicIp.mode','create');
-  f.pipname.value=fld(it,'publicIp.name');
   f.branch.value=fld(it,'app.branch');
   f.region.value=(it.has('city') && String(it.get('city')).toLowerCase()==='mumbai') ? 'mumbai-aws' : fld(it,'azure.location','centralindia');
   f.editIndex.value=String(i);
