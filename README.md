@@ -9,6 +9,14 @@ It lets you:
   `enabled` flag in `config.yaml`).
 - **Add a new VM** via a form.
 
+## Regions
+The Add/Edit form's **Region** selector chooses where a VM runs:
+- **Central India / UK South / West India** — Azure (writes the region's `azure:` override; Central
+  India inherits `common.azure`).
+- **Mumbai (AWS)** — Amazon EC2 in `ap-south-1`. Writes `city: Mumbai`, which the provisioner routes
+  to AWS (EC2 + security group + Elastic IP + SSM) via `common.cityProviders` + `common.aws` (golden
+  AMI). No Azure override is written.
+
 ## How it works
 The page runs entirely in your browser. It talks to the GitHub Contents API using a **fine-grained
 Personal Access Token** you paste once (stored only in your browser's `localStorage`), and it

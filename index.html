@@ -101,7 +101,7 @@
             </div>
             <div>
               <label>Region</label>
-              <select name="region"><option value="centralindia">Central India</option><option value="uksouth">UK South</option><option value="westindia">West India (Mumbai)</option></select>
+              <select name="region"><option value="centralindia">Central India (Azure)</option><option value="uksouth">UK South (Azure)</option><option value="westindia">West India (Azure)</option><option value="mumbai-aws">Mumbai (AWS)</option></select>
             </div>
             <div><label>Reuse IP name (if reusing)</label><input name="pipname" placeholder="auto: <name>-pip"></div>
             <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
@@ -193,11 +193,13 @@ function render(){
   vmsNode.items.forEach((it,i)=>{
     const on = it.has('enabled') ? !!it.get('enabled') : true;
     const tr=document.createElement('tr'); if(!on) tr.className='off';
+    const isMumbaiAws = it.has('city') && String(it.get('city')).toLowerCase()==='mumbai';
+    const region = isMumbaiAws ? 'Mumbai (AWS)' : fld(it,'azure.location','centralindia');
     tr.innerHTML=`<td class="c"><input type="checkbox" data-i="${i}" ${on?'checked':''}></td>`+
       `<td>${esc(fld(it,'name'))}</td><td>${esc(fld(it,'mt5.login'))}</td>`+
       `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
       `<td>${esc(fld(it,'publicIp.mode','create'))}</td>`+
-      `<td>${esc(fld(it,'azure.location','centralindia'))}</td>`+
+      `<td>${esc(region)}</td>`+
       `<td class="c"><button type="button" data-edit="${i}">Edit</button></td>`;
     tb.appendChild(tr);
   });
@@ -241,9 +243,18 @@ function applyFields(item, f){
   else if(item.hasIn(['publicIp','name'])) item.deleteIn(['publicIp','name']);
   if(f.branch.value.trim()) item.setIn(['app','branch'], f.branch.value.trim());
   else if(item.hasIn(['app','branch'])) item.deleteIn(['app','branch']);
-  const preset=REGION_PRESETS[f.region.value];
-  if(preset) item.set('azure', doc.createNode(preset));
-  else if(item.has('azure')) item.delete('azure');   // Central India = inherit common.azure
+  // Region routing. Mumbai (AWS) => write `city: Mumbai` (the provisioner routes
+  // it to AWS ap-south-1 via common.cityProviders + common.aws), no azure override.
+  // UK South / West India => azure preset. Central India => inherit common.azure.
+  if(f.region.value==='mumbai-aws'){
+    item.set('city','Mumbai');
+    if(item.has('azure')) item.delete('azure');
+  } else {
+    if(item.has('city')) item.delete('city');
+    const preset=REGION_PRESETS[f.region.value];
+    if(preset) item.set('azure', doc.createNode(preset));
+    else if(item.has('azure')) item.delete('azure');   // Central India = inherit common.azure
+  }
 }
 
 function submitForm(e){
@@ -267,7 +278,7 @@ function editVm(i){
   f.pipmode.value=fld(it,'publicIp.mode','create');
   f.pipname.value=fld(it,'publicIp.name');
   f.branch.value=fld(it,'app.branch');
-  f.region.value=fld(it,'azure.location','centralindia');
+  f.region.value=(it.has('city') && String(it.get('city')).toLowerCase()==='mumbai') ? 'mumbai-aws' : fld(it,'azure.location','centralindia');
   f.editIndex.value=String(i);
   $('#formSubmit').textContent='Update VM';
   $('#cancelEdit').hidden=false;
