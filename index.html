@@ -18,6 +18,8 @@
   button:hover { border-color:var(--accent); }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
   button:disabled { opacity:.5; cursor:not-allowed; }
+  button.danger { color:var(--err); }
+  button.danger:hover { border-color:var(--err); background:#2a1114; }
   input, select { font:inherit; padding:7px 9px; border-radius:7px; border:1px solid var(--line);
                   background:#0d1117; color:var(--fg); width:100%; }
   label { display:block; font-size:13px; color:var(--mut); margin:0 0 4px; }
@@ -25,6 +27,9 @@
   th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
   th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
   td.c, th.c { text-align:center; width:64px; }
+  td.actions { text-align:right; white-space:nowrap; }
+  td.actions button { padding:6px 10px; }
+  td.actions button + button { margin-left:6px; }
   tr.off td:not(.c) { opacity:.45; }
   .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
   .grow { flex:1; }
@@ -212,13 +217,15 @@ function render(){
       `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
       `<td>${esc(fld(it,'name') + (isMumbaiAws ? '-eip' : '-pip'))}</td>`+
       `<td>${esc(region)}</td>`+
-      `<td class="c"><button type="button" data-edit="${i}">Edit</button></td>`;
+      `<td class="actions"><button type="button" data-edit="${i}">Edit</button>`+
+      `<button type="button" class="danger" data-del="${i}">Delete</button></td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
     cb.closest('tr').classList.toggle('off',!cb.checked); markDirty(true);
   }));
   tb.querySelectorAll('button[data-edit]').forEach(b=>b.addEventListener('click',()=>editVm(+b.dataset.edit)));
+  tb.querySelectorAll('button[data-del]').forEach(b=>b.addEventListener('click',()=>deleteVm(+b.dataset.del)));
 }
 
 function syncEnabled(){
@@ -295,6 +302,19 @@ function editVm(i){
   $('#formSummary').textContent='Editing '+fld(it,'name');
   $('#addPanel').open=true;
   f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+// Remove a VM entry from config.yaml. Only edits the file (the row disappears and
+// won't be provisioned at the next run); it does NOT tear down an already-running
+// cloud VM / IP -- use the Destroy workflow for that. Resets the edit form since
+// splicing shifts the indices the form's editIndex points at.
+function deleteVm(i){
+  const it=vmsNode.items[i], name=fld(it,'name') || `VM #${i+1}`;
+  if(!confirm(`Delete "${name}" from config.yaml?\n\nThis removes the entry so it won't be provisioned. Click Save changes to commit.\n\n(Any already-running VM / public IP is not touched — use Destroy for that.)`)) return;
+  syncEnabled();                                      // keep unsaved deploy toggles
+  vmsNode.items.splice(i,1);
+  render(); resetForm(); $('#addPanel').open=false; markDirty(true);
+  log('Removed '+name+' — click Save changes to commit.','ok');
 }
 
 function resetForm(){

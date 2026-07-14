@@ -7,7 +7,9 @@ trading-VM fleet defined in the **private** repo
 It lets you:
 - **Check / uncheck** which VMs deploy at the scheduled 08:30 IST provision run (toggles a per-VM
   `enabled` flag in `config.yaml`).
-- **Add a new VM** via a form.
+- **Add** a new VM (or **Edit** an existing one) via a form.
+- **Delete** a VM entry from `config.yaml` (removes it from the fleet so it won't be provisioned;
+  this only edits the file — it does not tear down an already-running cloud VM, use Destroy for that).
 - **Run the provision / destroy workflows** on demand (via the GitHub Actions API) — no need to open
   the Actions tab.
 
