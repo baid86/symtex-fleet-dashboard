@@ -119,7 +119,7 @@
             <div><label>Kite user ID</label><input name="kite" placeholder="WB4977"></div>
             <div>
               <label>Region</label>
-              <select name="region"><option value="centralindia">Central India (Azure)</option><option value="uksouth">UK South (Azure)</option><option value="westindia">West India (Azure)</option><option value="mumbai-aws">Mumbai (AWS)</option></select>
+              <select name="region"><option value="centralindia">Central India (Azure)</option><option value="southindia">South India / Chennai (Azure)</option><option value="indiasouthcentral">India South Central / Hyderabad (Azure)</option><option value="uksouth">UK South (Azure)</option><option value="westindia">West India (Azure)</option><option value="mumbai-aws">Mumbai (AWS)</option></select>
             </div>
             <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
           </div>
@@ -167,6 +167,20 @@ const REGION_PRESETS = {
     snapshot: 'tradesolutions133257-snap-20260619-westindia',
     subnetId: '/subscriptions/6e3b74b4-7f98-4329-9836-34690746ef53/resourceGroups/SYMTEX-CIN-RG/providers/Microsoft.Network/virtualNetworks/symtex-cin-west-vnet/subnets/default',
     nsg: 'symtex-cin-west-nsg'
+  },
+  // South India (Chennai) + India South Central (Hyderabad): D2s_v3 capacity
+  // confirmed 2026-08-12; golden snapshot cross-region-copied per region.
+  southindia: {
+    location: 'southindia',
+    snapshot: 'Novatrade35020-snap-20260809-south',
+    subnetId: '/subscriptions/6e3b74b4-7f98-4329-9836-34690746ef53/resourceGroups/SYMTEX-CIN-RG/providers/Microsoft.Network/virtualNetworks/symtex-cin-south-vnet/subnets/default',
+    nsg: 'symtex-cin-south-nsg'
+  },
+  indiasouthcentral: {
+    location: 'indiasouthcentral',
+    snapshot: 'Novatrade35020-snap-20260809-hyd',
+    subnetId: '/subscriptions/6e3b74b4-7f98-4329-9836-34690746ef53/resourceGroups/SYMTEX-CIN-RG/providers/Microsoft.Network/virtualNetworks/symtex-cin-hyd-vnet/subnets/default',
+    nsg: 'symtex-cin-hyd-nsg'
   }
 };
 
@@ -274,6 +288,10 @@ function applyFields(item, f){
     if(preset) item.set('azure', doc.createNode(preset));
     else if(item.has('azure')) item.delete('azure');   // Central India = inherit common.azure
   }
+  // Hyderabad (indiasouthcentral) has no Microsoft.DevTestLab/schedules -> disable the
+  // per-VM auto-shutdown; every other region inherits common.autoShutdown.
+  if(f.region.value==='indiasouthcentral') item.setIn(['autoShutdown','enabled'], false);
+  else if(item.has('autoShutdown')) item.delete('autoShutdown');
 }
 
 function submitForm(e){
