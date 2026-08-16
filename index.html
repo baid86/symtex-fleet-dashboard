@@ -36,6 +36,9 @@
   .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
   .grid .full { grid-column:1/-1; }
   details summary { cursor:pointer; font-weight:600; padding:6px 0; }
+  th.srt { cursor:pointer; user-select:none; }
+  th.srt:hover { color:#fff; }
+  .sarr { font-size:11px; opacity:.75; margin-left:3px; }
   #log { background:#0a0d11; border:1px solid var(--line); border-radius:8px; padding:10px 12px;
          white-space:pre-wrap; font:13px/1.5 ui-monospace,Consolas,monospace; max-height:220px; overflow:auto; margin-top:6px; }
   .ok{color:var(--ok)} .err{color:var(--err)} .mut{color:var(--mut)}
@@ -84,7 +87,7 @@
         <button class="primary" id="save" disabled>Save changes</button>
       </div>
       <table>
-        <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th><th>Region</th><th></th></tr></thead>
+        <thead><tr><th class="c srt" data-sort="enabled">Deploy<span class="sarr"></span></th><th class="srt" data-sort="name">Name<span class="sarr"></span></th><th class="srt" data-sort="login">MT5 login<span class="sarr"></span></th><th class="srt" data-sort="server">Server<span class="sarr"></span></th><th class="srt" data-sort="kite">Kite ID<span class="sarr"></span></th><th>Public IP</th><th class="srt" data-sort="region">Region<span class="sarr"></span></th><th></th></tr></thead>
         <tbody id="vmRows"></tbody>
       </table>
       <div id="kiteSummary" style="margin-top:12px;font-size:13px"></div>
@@ -220,9 +223,36 @@ async function load(){
   log('Loaded '+vmsNode.items.length+' VMs.','ok');
 }
 
+let sortCol=null, sortDir=1;
+// Sort key per column. Login is numeric; the rest are case-insensitive strings.
+function sortVal(it,col){
+  switch(col){
+    case 'enabled': return (it.has('enabled')?!!it.get('enabled'):true)?1:0;
+    case 'login':   return Number(fld(it,'mt5.login'))||0;
+    case 'name':    return (fld(it,'name')||'').toLowerCase();
+    case 'server':  return (fld(it,'mt5.server')||'').toLowerCase();
+    case 'kite':    return (fld(it,'env.KITE_USER_ID')||'').toLowerCase();
+    case 'region':  return (it.has('city')&&String(it.get('city')).toLowerCase()==='mumbai')?'mumbai (aws)':(fld(it,'azure.location','centralindia')||'').toLowerCase();
+    default: return '';
+  }
+}
+function updateSortIndicators(){
+  document.querySelectorAll('th.srt').forEach(th=>{ const s=th.querySelector('.sarr'); if(s) s.textContent=(th.dataset.sort===sortCol)?(sortDir>0?'▲':'▼'):''; });
+}
+function wireSort(){
+  document.querySelectorAll('th.srt').forEach(th=>th.addEventListener('click',()=>{
+    const col=th.dataset.sort;
+    if(sortCol===col){ sortDir=-sortDir; } else { sortCol=col; sortDir=1; }
+    render();
+  }));
+}
 function render(){
   const tb=$('#vmRows'); tb.innerHTML='';
-  vmsNode.items.forEach((it,i)=>{
+  // Sort the DISPLAY order only; row indices below still point at vmsNode.items.
+  let order=vmsNode.items.map((_,i)=>i);
+  if(sortCol) order.sort((a,b)=>{ const va=sortVal(vmsNode.items[a],sortCol), vb=sortVal(vmsNode.items[b],sortCol); return (va<vb?-1:va>vb?1:0)*sortDir; });
+  order.forEach(i=>{
+    const it=vmsNode.items[i];
     const on = it.has('enabled') ? !!it.get('enabled') : true;
     const tr=document.createElement('tr'); if(!on) tr.className='off';
     const isMumbaiAws = it.has('city') && String(it.get('city')).toLowerCase()==='mumbai';
@@ -241,6 +271,7 @@ function render(){
   }));
   tb.querySelectorAll('button[data-edit]').forEach(b=>b.addEventListener('click',()=>editVm(+b.dataset.edit)));
   tb.querySelectorAll('button[data-del]').forEach(b=>b.addEventListener('click',()=>deleteVm(+b.dataset.del)));
+  updateSortIndicators();
   renderKiteSummary();
 }
 
@@ -389,7 +420,7 @@ $('#runDestroy').onclick=()=>dispatch('destroy-vm.yml',{dry_run:String($('#dryru
 
 window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
 
-refreshTokUI(); load();
+wireSort(); refreshTokUI(); load();
 </script>
 </body>
 </html>
