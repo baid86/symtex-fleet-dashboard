@@ -87,6 +87,7 @@
         <thead><tr><th class="c">Deploy</th><th>Name</th><th>MT5 login</th><th>Server</th><th>Kite ID</th><th>Public IP</th><th>Region</th><th></th></tr></thead>
         <tbody id="vmRows"></tbody>
       </table>
+      <div id="kiteSummary" style="margin-top:12px;font-size:13px"></div>
     </div>
 
     <!-- RUN WORKFLOWS -->
@@ -240,6 +241,26 @@ function render(){
   }));
   tb.querySelectorAll('button[data-edit]').forEach(b=>b.addEventListener('click',()=>editVm(+b.dataset.edit)));
   tb.querySelectorAll('button[data-del]').forEach(b=>b.addEventListener('click',()=>deleteVm(+b.dataset.del)));
+  renderKiteSummary();
+}
+
+// Kite ID usage: distinct count + per-ID enabled/total VM counts. A Kite login can
+// only carry so many concurrent VMs, so this shows how loaded each one is.
+function renderKiteSummary(){
+  const el=$('#kiteSummary'); if(!el) return;
+  const kite={};
+  vmsNode.items.forEach(it=>{
+    const k=(fld(it,'env.KITE_USER_ID')||'(none)');
+    const on=it.has('enabled')?!!it.get('enabled'):true;
+    (kite[k]=kite[k]||{t:0,e:0}).t++; if(on) kite[k].e++;
+  });
+  const ids=Object.keys(kite).sort();
+  const chips=ids.map(k=>{
+    const v=kite[k], lbl=(v.e===v.t)?String(v.t):(v.e+'/'+v.t);
+    return `<span style="display:inline-block;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:2px 9px;margin:3px 5px 0 0">${esc(k)} <b>${lbl}</b></span>`;
+  }).join('');
+  el.innerHTML=`<b>${ids.length}</b> Kite ID${ids.length===1?'':'s'} in use across ${vmsNode.items.length} VMs `+
+    `<span class="mut">(enabled / total per ID)</span><div style="margin-top:4px">${chips||'<span class="mut">none</span>'}</div>`;
 }
 
 function syncEnabled(){
