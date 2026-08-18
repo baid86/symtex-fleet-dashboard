@@ -129,6 +129,8 @@
             <div data-bfield="user"><label id="bUserLbl">Username</label><input name="buser" placeholder="82017"></div>
             <div data-bfield="pass"><label>Password</label><input name="bpass"></div>
             <div data-bfield="bserver"><label id="bServerLbl">Server</label><input name="bserver"></div>
+            <div data-bfield="blots"><label id="bLotsLbl">Order lots (optional)</label><input name="blots"></div>
+            <div data-bfield="bmaxlots"><label>Max lots per order (optional)</label><input name="bmaxlots" placeholder="keep ≥ order lots; blank = no cap"></div>
             <div><label>Kite user ID</label><input name="kite" placeholder="WB4977"></div>
             <div>
               <label>Region</label>
@@ -203,22 +205,34 @@ const REGION_PRESETS = {
 // NO `mt5:` block (the provisioner then skips MT5 entirely) and instead carry
 // the broker's credential env vars listed here. `user`/`pass` are env key
 // names; `extra` (optional) is a third env key (server / company selector)
-// with a label + default. Adding a broker = adding one entry here — the form,
-// table and config.yaml writing are all driven off this registry.
+// with a label + default; `lots` / `maxLots` (optional) are that broker's
+// order-sizing env keys — left blank the key is omitted and the app sizes from
+// SIGNAL_ORDER_NOTIONAL_INR (or the broker's own per-script default). Adding a
+// broker = adding one entry here — the form, table and config.yaml writing are
+// all driven off this registry.
 const BROKERS = {
   mt5:         { label: 'MetaTrader 5' },
   suexch:      { label: 'SU Exch',      user: 'SUEXCH_USERNAME',   pass: 'SUEXCH_PASSWORD',
-                 extra: { key: 'SUEXCH_SERVER', label: 'Server', def: 'su' } },
+                 extra: { key: 'SUEXCH_SERVER', label: 'Server', def: 'su' },
+                 lots: { key: 'SUEXCH_ORDER_AMOUNT', ph: 'blank = broker breakup lot' } },
   p3exch:      { label: 'P3 Exch',      user: 'P3EXCH_USERNAME',   pass: 'P3EXCH_PASSWORD',
-                 extra: { key: 'P3EXCH_SERVER', label: 'Server', def: 'p3' } },
-  builcon:     { label: 'Builcon Pro',  user: 'BUILCON_USERNAME',  pass: 'BUILCON_PASSWORD' },
-  gmglobal:    { label: 'GM Global',    user: 'GMGLOBAL_USERNAME', pass: 'GMGLOBAL_PASSWORD' },
-  anchor:      { label: 'Anchor Alpha', user: 'ANCHOR_USERNAME',   pass: 'ANCHOR_PASSWORD' },
+                 extra: { key: 'P3EXCH_SERVER', label: 'Server', def: 'p3' },
+                 lots: { key: 'P3EXCH_ORDER_AMOUNT', ph: 'blank = broker breakup lot' } },
+  builcon:     { label: 'Builcon Pro',  user: 'BUILCON_USERNAME',  pass: 'BUILCON_PASSWORD',
+                 lots: { key: 'BUILCON_ORDER_LOTS', ph: 'blank = notional sizing' } },
+  gmglobal:    { label: 'GM Global',    user: 'GMGLOBAL_USERNAME', pass: 'GMGLOBAL_PASSWORD',
+                 lots: { key: 'GMGLOBAL_ORDER_LOTS', ph: 'number or max; blank = notional sizing' } },
+  anchor:      { label: 'Anchor Alpha', user: 'ANCHOR_USERNAME',   pass: 'ANCHOR_PASSWORD',
+                 lots: { key: 'ANCHOR_ORDER_LOTS', ph: 'blank = notional sizing' } },
   oceanexch:   { label: 'Ocean Exch',   user: 'OCEANEXCH_ACCOUNT_CODE', userLabel: 'Account code',
-                 pass: 'OCEANEXCH_PASSWORD' },
-  mplant:      { label: 'Money Plant',  user: 'MPLANT_USERNAME',   pass: 'MPLANT_PASSWORD' },
+                 pass: 'OCEANEXCH_PASSWORD',
+                 lots: { key: 'OCEANEXCH_ORDER_LOTS', ph: 'blank = notional sizing' } },
+  mplant:      { label: 'Money Plant',  user: 'MPLANT_USERNAME',   pass: 'MPLANT_PASSWORD',
+                 lots: { key: 'MPLANT_ORDER_LOTS', ph: 'blank = notional sizing' } },
   platformapi: { label: 'PlatformAPI (ArkTrader)', user: 'PLATFORMAPI_USERNAME', pass: 'PLATFORMAPI_PASSWORD',
-                 extra: { key: 'PLATFORMAPI_BROKER', label: 'Broker company', def: 'UNICKON' } },
+                 extra: { key: 'PLATFORMAPI_BROKER', label: 'Broker company', def: 'UNICKON' },
+                 lots: { key: 'PLATFORMAPI_ORDER_LOTS', ph: 'blank = notional sizing' },
+                 maxLots: { key: 'PLATFORMAPI_MAX_ORDER_LOTS' } },
 };
 
 let doc = null, sha = null, vmsNode = null, dirty = false;
@@ -257,13 +271,18 @@ function updateBrokerFields(){
   const f=$('#addForm'), b=f.broker.value, spec=BROKERS[b]||BROKERS.mt5, isMt5=(b==='mt5');
   document.querySelectorAll('[data-bfield]').forEach(el=>{
     const kind=el.dataset.bfield;
-    const show = kind==='mt5' ? isMt5 : (kind==='bserver' ? !isMt5 && !!spec.extra : !isMt5);
+    const show = kind==='mt5'      ? isMt5
+               : kind==='bserver'  ? !isMt5 && !!spec.extra
+               : kind==='blots'    ? !isMt5 && !!spec.lots
+               : kind==='bmaxlots' ? !isMt5 && !!spec.maxLots
+               : !isMt5;
     el.style.display = show ? '' : 'none';
   });
   f.login.required=isMt5; f.password.required=isMt5; f.server.required=isMt5;
   f.buser.required=!isMt5; f.bpass.required=!isMt5;
   if(!isMt5){
     $('#bUserLbl').textContent = spec.userLabel||'Username';
+    if(spec.lots) f.blots.placeholder = spec.lots.ph||'';
     if(spec.extra){
       $('#bServerLbl').textContent=spec.extra.label; f.bserver.placeholder=spec.extra.def;
       // Prefill the default, and replace it when it was only ever an autofill
@@ -393,7 +412,8 @@ function applyFields(item, f){
   const bsel=f.broker.value, bspec=BROKERS[bsel];
   for(const [k,s] of Object.entries(BROKERS)){
     if(k===bsel || k==='mt5') continue;
-    for(const key of [s.user, s.pass, s.extra&&s.extra.key]) if(key && item.hasIn(['env',key])) item.deleteIn(['env',key]);
+    for(const key of [s.user, s.pass, s.extra&&s.extra.key, s.lots&&s.lots.key, s.maxLots&&s.maxLots.key])
+      if(key && item.hasIn(['env',key])) item.deleteIn(['env',key]);
   }
   if(bsel==='mt5'){
     if(item.hasIn(['env','ORDER_BROKER'])) item.deleteIn(['env','ORDER_BROKER']);
@@ -406,6 +426,14 @@ function applyFields(item, f){
     item.setIn(['env',bspec.user], f.buser.value.trim());
     item.setIn(['env',bspec.pass], f.bpass.value);
     if(bspec.extra) item.setIn(['env',bspec.extra.key], f.bserver.value.trim()||bspec.extra.def);
+    // Optional order-sizing keys: blank input removes the key (app default sizing).
+    // Numeric values land as YAML numbers; GM Global's "max" stays a string.
+    for(const [o,inp] of [[bspec.lots,f.blots],[bspec.maxLots,f.bmaxlots]]){
+      if(!o) continue;
+      const v=inp.value.trim();
+      if(v) item.setIn(['env',o.key], /^\d+$/.test(v)?Number(v):v);
+      else if(item.hasIn(['env',o.key])) item.deleteIn(['env',o.key]);
+    }
   }
   item.setIn(['env','KITE_USER_ID'], f.kite.value.trim());
   // Public IP is automatic: the provisioner reuses <name>-pip (Azure) / <name>-eip
@@ -457,7 +485,9 @@ function editVm(i){
     f.buser.value=fld(it,'env.'+spec.user);
     f.bpass.value=fld(it,'env.'+spec.pass);
     if(spec.extra){ f.bserver.value=fld(it,'env.'+spec.extra.key); delete f.bserver.dataset.autofill; }
-  } else { f.buser.value=''; f.bpass.value=''; f.bserver.value=''; delete f.bserver.dataset.autofill; }
+    f.blots.value = spec.lots ? fld(it,'env.'+spec.lots.key) : '';
+    f.bmaxlots.value = spec.maxLots ? fld(it,'env.'+spec.maxLots.key) : '';
+  } else { f.buser.value=''; f.bpass.value=''; f.bserver.value=''; f.blots.value=''; f.bmaxlots.value=''; delete f.bserver.dataset.autofill; }
   updateBrokerFields();
   f.kite.value=fld(it,'env.KITE_USER_ID');
   f.branch.value=fld(it,'app.branch');

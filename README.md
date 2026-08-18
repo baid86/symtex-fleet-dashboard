@@ -26,6 +26,12 @@ The Add/Edit form's **Order broker** dropdown picks how the VM's trading app pla
   …) instead of an `mt5:` block. With no `mt5:` block, the provisioner skips MT5 entirely
   (no terminal launch, no login wait) and just verifies the app came up.
 
+Each non-MT5 broker also gets an optional **Order lots** field (`<PREFIX>_ORDER_LOTS`, or
+`_ORDER_AMOUNT` for SU/P3 Exch; GM Global accepts a number or `max`) — blank omits the key so the
+app sizes orders itself (notional / broker breakup lot). PlatformAPI additionally offers
+**Max lots per order** (`PLATFORMAPI_MAX_ORDER_LOTS`), a hard per-order ceiling applied after
+sizing — keep it ≥ Order lots or it silently clamps every order down.
+
 Switching a VM's broker on Edit scrubs the previous broker's credential keys from the entry, so
 no stale logins linger in `config.yaml`. The broker list lives in one registry (`BROKERS`) at the
 top of `index.html` — adding a broker there (label + env key names) is the only change needed.
