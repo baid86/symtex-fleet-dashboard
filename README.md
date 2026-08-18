@@ -13,6 +13,26 @@ It lets you:
 - **Run the provision / destroy workflows** on demand (via the GitHub Actions API) — no need to open
   the Actions tab.
 
+## Order brokers
+The Add/Edit form's **Order broker** dropdown picks how the VM's trading app places orders:
+
+- **MetaTrader 5** (default) — the classic flow: writes the per-VM `mt5:` block
+  (login / password / server) and the provisioner performs the one-time MT5 terminal login.
+- **Any other broker** (SU Exch, P3 Exch, Builcon Pro, GM Global, Anchor Alpha, Ocean Exch,
+  Money Plant, PlatformAPI) — an HTTP broker the app selects via the `ORDER_BROKER` env var.
+  The form swaps to that broker's fields (username/account + password, plus a server/company
+  field where the broker has one, prefilled with its usual value: `su`, `p3`, `UNICKON`), and
+  writes them as env vars (`env.ORDER_BROKER`, `env.<PREFIX>_USERNAME`, `env.<PREFIX>_PASSWORD`,
+  …) instead of an `mt5:` block. With no `mt5:` block, the provisioner skips MT5 entirely
+  (no terminal launch, no login wait) and just verifies the app came up.
+
+Switching a VM's broker on Edit scrubs the previous broker's credential keys from the entry, so
+no stale logins linger in `config.yaml`. The broker list lives in one registry (`BROKERS`) at the
+top of `index.html` — adding a broker there (label + env key names) is the only change needed.
+
+The table's **Login** and **Broker / server** columns show the MT5 login/server for MT5 VMs, and
+the broker's username / `broker · server` for the rest.
+
 ## Regions
 The Add/Edit form's **Region** selector chooses where a VM runs:
 - **Central India / UK South / West India** — Azure (writes the region's `azure:` override; Central

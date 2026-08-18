@@ -87,7 +87,7 @@
         <button class="primary" id="save" disabled>Save changes</button>
       </div>
       <table>
-        <thead><tr><th class="c srt" data-sort="enabled">Deploy<span class="sarr"></span></th><th class="srt" data-sort="name">Name<span class="sarr"></span></th><th class="srt" data-sort="login">MT5 login<span class="sarr"></span></th><th class="srt" data-sort="server">Server<span class="sarr"></span></th><th class="srt" data-sort="kite">Kite ID<span class="sarr"></span></th><th>Public IP</th><th class="srt" data-sort="region">Region<span class="sarr"></span></th><th></th></tr></thead>
+        <thead><tr><th class="c srt" data-sort="enabled">Deploy<span class="sarr"></span></th><th class="srt" data-sort="name">Name<span class="sarr"></span></th><th class="srt" data-sort="login">Login<span class="sarr"></span></th><th class="srt" data-sort="server">Broker / server<span class="sarr"></span></th><th class="srt" data-sort="kite">Kite ID<span class="sarr"></span></th><th>Public IP</th><th class="srt" data-sort="region">Region<span class="sarr"></span></th><th></th></tr></thead>
         <tbody id="vmRows"></tbody>
       </table>
       <div id="kiteSummary" style="margin-top:12px;font-size:13px"></div>
@@ -117,9 +117,18 @@
           <input type="hidden" name="editIndex" value="">
           <div class="grid">
             <div><label>VM name</label><input name="vmname" required placeholder="e.g. NakodaFx30001"></div>
-            <div><label>MT5 login</label><input name="login" type="number" required placeholder="30001"></div>
-            <div><label>MT5 password</label><input name="password" required></div>
-            <div><label>MT5 server</label><input name="server" list="servers" required placeholder="NakodaFX-Trade"></div>
+            <div>
+              <label>Order broker</label>
+              <select name="broker" id="brokerSel"></select>
+            </div>
+            <!-- MT5 fields (Order broker = MetaTrader 5) -->
+            <div data-bfield="mt5"><label>MT5 login</label><input name="login" type="number" required placeholder="30001"></div>
+            <div data-bfield="mt5"><label>MT5 password</label><input name="password" required></div>
+            <div data-bfield="mt5"><label>MT5 server</label><input name="server" list="servers" required placeholder="NakodaFX-Trade"></div>
+            <!-- Non-MT5 broker fields (labels/visibility driven by the BROKERS registry) -->
+            <div data-bfield="user"><label id="bUserLbl">Username</label><input name="buser" placeholder="82017"></div>
+            <div data-bfield="pass"><label>Password</label><input name="bpass"></div>
+            <div data-bfield="bserver"><label id="bServerLbl">Server</label><input name="bserver"></div>
             <div><label>Kite user ID</label><input name="kite" placeholder="WB4977"></div>
             <div>
               <label>Region</label>
@@ -188,6 +197,30 @@ const REGION_PRESETS = {
   }
 };
 
+// Order-broker registry. `mt5` is the classic MetaTrader flow (writes the
+// per-VM `mt5:` block; the provisioner stages the terminal login). Every other
+// entry is an HTTP broker the app selects via env.ORDER_BROKER — those VMs get
+// NO `mt5:` block (the provisioner then skips MT5 entirely) and instead carry
+// the broker's credential env vars listed here. `user`/`pass` are env key
+// names; `extra` (optional) is a third env key (server / company selector)
+// with a label + default. Adding a broker = adding one entry here — the form,
+// table and config.yaml writing are all driven off this registry.
+const BROKERS = {
+  mt5:         { label: 'MetaTrader 5' },
+  suexch:      { label: 'SU Exch',      user: 'SUEXCH_USERNAME',   pass: 'SUEXCH_PASSWORD',
+                 extra: { key: 'SUEXCH_SERVER', label: 'Server', def: 'su' } },
+  p3exch:      { label: 'P3 Exch',      user: 'P3EXCH_USERNAME',   pass: 'P3EXCH_PASSWORD',
+                 extra: { key: 'P3EXCH_SERVER', label: 'Server', def: 'p3' } },
+  builcon:     { label: 'Builcon Pro',  user: 'BUILCON_USERNAME',  pass: 'BUILCON_PASSWORD' },
+  gmglobal:    { label: 'GM Global',    user: 'GMGLOBAL_USERNAME', pass: 'GMGLOBAL_PASSWORD' },
+  anchor:      { label: 'Anchor Alpha', user: 'ANCHOR_USERNAME',   pass: 'ANCHOR_PASSWORD' },
+  oceanexch:   { label: 'Ocean Exch',   user: 'OCEANEXCH_ACCOUNT_CODE', userLabel: 'Account code',
+                 pass: 'OCEANEXCH_PASSWORD' },
+  mplant:      { label: 'Money Plant',  user: 'MPLANT_USERNAME',   pass: 'MPLANT_PASSWORD' },
+  platformapi: { label: 'PlatformAPI (ArkTrader)', user: 'PLATFORMAPI_USERNAME', pass: 'PLATFORMAPI_PASSWORD',
+                 extra: { key: 'PLATFORMAPI_BROKER', label: 'Broker company', def: 'UNICKON' } },
+};
+
 let doc = null, sha = null, vmsNode = null, dirty = false;
 const $ = s => document.querySelector(s);
 const log = (m, cls='mut') => { const e=$('#log'); e.innerHTML = `<span class="${cls}">${m}</span>`; };
@@ -207,6 +240,39 @@ function b64encode(s){ const by=new TextEncoder().encode(s); let bin=''; for(con
 function H(){ return {Authorization:'Bearer '+tok(),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}; }
 const esc = s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fld = (it,p,d='') => { const v=it.getIn(p.split('.')); return (v===undefined||v===null)?d:v; };
+
+// Which broker a VM entry trades through: env.ORDER_BROKER when set, else mt5.
+// (An unknown ORDER_BROKER value is still returned so the table shows it.)
+const brokerOf = it => { const b=String(fld(it,'env.ORDER_BROKER')||'').trim().toLowerCase(); return b||'mt5'; };
+// Login/account shown in the table for any broker kind.
+const brokerLogin = it => { const b=brokerOf(it); if(b==='mt5') return fld(it,'mt5.login');
+  const s=BROKERS[b]; return s&&s.user ? fld(it,'env.'+s.user) : ''; };
+// Server-column display: MT5 server for mt5, else "broker · extra" (e.g. "suexch · su").
+const brokerServer = it => { const b=brokerOf(it); if(b==='mt5') return fld(it,'mt5.server');
+  const s=BROKERS[b]; const x=(s&&s.extra) ? fld(it,'env.'+s.extra.key) : '';
+  return x ? b+' · '+x : b; };
+
+// Show/hide + require the per-broker form fields for the selected broker.
+function updateBrokerFields(){
+  const f=$('#addForm'), b=f.broker.value, spec=BROKERS[b]||BROKERS.mt5, isMt5=(b==='mt5');
+  document.querySelectorAll('[data-bfield]').forEach(el=>{
+    const kind=el.dataset.bfield;
+    const show = kind==='mt5' ? isMt5 : (kind==='bserver' ? !isMt5 && !!spec.extra : !isMt5);
+    el.style.display = show ? '' : 'none';
+  });
+  f.login.required=isMt5; f.password.required=isMt5; f.server.required=isMt5;
+  f.buser.required=!isMt5; f.bpass.required=!isMt5;
+  if(!isMt5){
+    $('#bUserLbl').textContent = spec.userLabel||'Username';
+    if(spec.extra){
+      $('#bServerLbl').textContent=spec.extra.label; f.bserver.placeholder=spec.extra.def;
+      // Prefill the default, and replace it when it was only ever an autofill
+      // (so switching SU Exch -> P3 Exch swaps su -> p3, but a hand-typed or
+      // loaded-from-config value is never clobbered).
+      if(!f.bserver.value || f.bserver.value===f.bserver.dataset.autofill){ f.bserver.value=spec.extra.def; f.bserver.dataset.autofill=spec.extra.def; }
+    }
+  }
+}
 
 async function load(){
   if(!tok()){ refreshTokUI(); return; }
@@ -228,9 +294,9 @@ let sortCol=null, sortDir=1;
 function sortVal(it,col){
   switch(col){
     case 'enabled': return (it.has('enabled')?!!it.get('enabled'):true)?1:0;
-    case 'login':   return Number(fld(it,'mt5.login'))||0;
+    case 'login':   return Number(brokerLogin(it))||0;
     case 'name':    return (fld(it,'name')||'').toLowerCase();
-    case 'server':  return (fld(it,'mt5.server')||'').toLowerCase();
+    case 'server':  return String(brokerServer(it)||'').toLowerCase();
     case 'kite':    return (fld(it,'env.KITE_USER_ID')||'').toLowerCase();
     case 'region':  return (it.has('city')&&String(it.get('city')).toLowerCase()==='mumbai')?'mumbai (aws)':(fld(it,'azure.location','centralindia')||'').toLowerCase();
     default: return '';
@@ -258,8 +324,8 @@ function render(){
     const isMumbaiAws = it.has('city') && String(it.get('city')).toLowerCase()==='mumbai';
     const region = isMumbaiAws ? 'Mumbai (AWS)' : fld(it,'azure.location','centralindia');
     tr.innerHTML=`<td class="c"><input type="checkbox" data-i="${i}" ${on?'checked':''}></td>`+
-      `<td>${esc(fld(it,'name'))}</td><td>${esc(fld(it,'mt5.login'))}</td>`+
-      `<td>${esc(fld(it,'mt5.server'))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
+      `<td>${esc(fld(it,'name'))}</td><td>${esc(brokerLogin(it))}</td>`+
+      `<td>${esc(brokerServer(it))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
       `<td>${esc(fld(it,'name') + (isMumbaiAws ? '-eip' : '-pip'))}</td>`+
       `<td>${esc(region)}</td>`+
       `<td class="actions"><button type="button" data-edit="${i}">Edit</button>`+
@@ -319,9 +385,28 @@ async function save(){
 function applyFields(item, f){
   const name=f.vmname.value.trim();
   item.set('name', name);
-  item.setIn(['mt5','login'], Number(f.login.value));
-  item.setIn(['mt5','password'], f.password.value);
-  item.setIn(['mt5','server'], f.server.value.trim());
+  // Broker: MT5 writes the classic mt5: block; a non-MT5 broker instead writes
+  // env.ORDER_BROKER + its credential env vars (the provisioner sees no
+  // mt5.login and skips the whole MT5 terminal/login flow). Either way, scrub
+  // every OTHER broker's keys so switching broker on Edit never leaves stale
+  // credentials behind.
+  const bsel=f.broker.value, bspec=BROKERS[bsel];
+  for(const [k,s] of Object.entries(BROKERS)){
+    if(k===bsel || k==='mt5') continue;
+    for(const key of [s.user, s.pass, s.extra&&s.extra.key]) if(key && item.hasIn(['env',key])) item.deleteIn(['env',key]);
+  }
+  if(bsel==='mt5'){
+    if(item.hasIn(['env','ORDER_BROKER'])) item.deleteIn(['env','ORDER_BROKER']);
+    item.setIn(['mt5','login'], Number(f.login.value));
+    item.setIn(['mt5','password'], f.password.value);
+    item.setIn(['mt5','server'], f.server.value.trim());
+  } else {
+    if(item.has('mt5')) item.delete('mt5');
+    item.setIn(['env','ORDER_BROKER'], bsel);
+    item.setIn(['env',bspec.user], f.buser.value.trim());
+    item.setIn(['env',bspec.pass], f.bpass.value);
+    if(bspec.extra) item.setIn(['env',bspec.extra.key], f.bserver.value.trim()||bspec.extra.def);
+  }
   item.setIn(['env','KITE_USER_ID'], f.kite.value.trim());
   // Public IP is automatic: the provisioner reuses <name>-pip (Azure) / <name>-eip
   // (AWS) if it exists, else creates it -- so no per-VM publicIp block is needed.
@@ -360,9 +445,20 @@ function submitForm(e){
 function editVm(i){
   const it=vmsNode.items[i], f=$('#addForm');
   f.vmname.value=fld(it,'name');
+  const b=brokerOf(it), spec=BROKERS[b];
+  // Unknown ORDER_BROKER (not in BROKERS yet): the form opens in MT5 mode, and
+  // submitting is an explicit convert-to-MT5 (validation forces the MT5 creds
+  // to be typed first, so it can't happen by accident).
+  f.broker.value = (spec && b!=='mt5') ? b : 'mt5';
   f.login.value=fld(it,'mt5.login');
   f.password.value=fld(it,'mt5.password');
   f.server.value=fld(it,'mt5.server');
+  if(spec && b!=='mt5'){
+    f.buser.value=fld(it,'env.'+spec.user);
+    f.bpass.value=fld(it,'env.'+spec.pass);
+    if(spec.extra){ f.bserver.value=fld(it,'env.'+spec.extra.key); delete f.bserver.dataset.autofill; }
+  } else { f.buser.value=''; f.bpass.value=''; f.bserver.value=''; delete f.bserver.dataset.autofill; }
+  updateBrokerFields();
   f.kite.value=fld(it,'env.KITE_USER_ID');
   f.branch.value=fld(it,'app.branch');
   f.region.value=(it.has('city') && String(it.get('city')).toLowerCase()==='mumbai') ? 'mumbai-aws' : fld(it,'azure.location','centralindia');
@@ -388,7 +484,9 @@ function deleteVm(i){
 }
 
 function resetForm(){
-  const f=$('#addForm'); f.reset(); f.editIndex.value='';   // f.reset() restores Region to Central India (first option)
+  const f=$('#addForm'); f.reset(); f.editIndex.value='';   // f.reset() restores Region + Order broker to their first options
+  delete f.bserver.dataset.autofill;
+  updateBrokerFields();
   $('#formSubmit').textContent='Add to list';
   $('#cancelEdit').hidden=true;
   $('#formSummary').textContent='+ Add a VM';
@@ -400,6 +498,11 @@ $('#reload').onclick=load;
 $('#save').onclick=save;
 $('#addForm').addEventListener('submit',submitForm);
 $('#cancelEdit').addEventListener('click',resetForm);
+// Order-broker dropdown: options come from the BROKERS registry; changing it
+// swaps which credential fields are visible/required.
+for(const [k,s] of Object.entries(BROKERS)) $('#brokerSel').add(new Option(s.label,k));
+$('#brokerSel').addEventListener('change',updateBrokerFields);
+updateBrokerFields();
 
 // Trigger a GitHub Actions workflow (workflow_dispatch) so the operator can run
 // provision/destroy without opening GitHub. Needs the token's Actions:write scope.
