@@ -7,11 +7,24 @@ trading-VM fleet defined in the **private** repo
 It lets you:
 - **Check / uncheck** which VMs deploy at the scheduled 08:30 IST provision run (toggles a per-VM
   `enabled` flag in `config.yaml`).
-- **Add** a new VM (or **Edit** an existing one) via a form.
-- **Delete** a VM entry from `config.yaml` (removes it from the fleet so it won't be provisioned;
-  this only edits the file — it does not tear down an already-running cloud VM, use Destroy for that).
-- **Run the provision / destroy workflows** on demand (via the GitHub Actions API) — no need to open
-  the Actions tab.
+- **Add** a new VM via a form — it is committed to `config.yaml` straight away. **Edit** an existing
+  one (edits stay pending until **Save changes**, so several can go in one commit).
+- Per VM row:
+  - **▶ Start** — provision just that VM now. If its Deploy box is unchecked it is ticked first
+    (the provisioner skips `enabled: false` VMs).
+  - **■ Delete** — deprovision just that VM now: deletes the cloud VM, disk and NIC, keeps its public
+    IP for reuse. The `config.yaml` entry stays.
+  - **Remove** — deprovision the VM (a no-op if it's already gone) **and** delete its entry from
+    `config.yaml`. The destroy run is triggered first, so it still sees the entry's region routing.
+- **Run the provision / destroy workflows** for the whole fleet (or one VM named in *Only this VM*)
+  on demand via the GitHub Actions API — no need to open the Actions tab.
+
+Every provision / deprovision first saves any unsaved changes, so the workflow runs against the
+config you see; if that save fails (e.g. a 409 conflict) the workflow is not triggered. The **dry run**
+box applies to all of these (a dry-run Remove keeps the entry).
+
+Per-VM deprovision needs the `only` input on `destroy-vm.yml` in the fleet repo (maps to
+`Remove-TradingVm.ps1 -Name`).
 
 ## Order brokers
 The Add/Edit form's **Order broker** dropdown picks how the VM's trading app places orders:

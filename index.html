@@ -9,7 +9,7 @@
           --ok:#3fb950; --err:#f85149; --accent:#2f81f7; }
   * { box-sizing: border-box; }
   body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
-  .wrap { max-width:980px; margin:0 auto; padding:24px 18px 60px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px 18px 60px; }
   h1 { font-size:22px; margin:0 0 4px; }
   .sub { color:var(--mut); margin:0 0 20px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:18px; }
@@ -20,6 +20,8 @@
   button:disabled { opacity:.5; cursor:not-allowed; }
   button.danger { color:var(--err); }
   button.danger:hover { border-color:var(--err); background:#2a1114; }
+  button.go { color:var(--ok); }
+  button.go:hover { border-color:var(--ok); background:#0f2416; }
   input, select { font:inherit; padding:7px 9px; border-radius:7px; border:1px solid var(--line);
                   background:#0d1117; color:var(--fg); width:100%; }
   label { display:block; font-size:13px; color:var(--mut); margin:0 0 4px; }
@@ -27,9 +29,10 @@
   th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
   th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
   td.c, th.c { text-align:center; width:64px; }
-  td.actions { text-align:right; white-space:nowrap; }
-  td.actions button { padding:6px 10px; }
-  td.actions button + button { margin-left:6px; }
+  .acts { display:grid; grid-template-columns:repeat(2,auto); gap:6px; justify-content:end; }
+  .acts button { padding:6px 10px; white-space:nowrap; }
+  @media (min-width:1150px) { .acts { grid-template-columns:repeat(4,auto); } }
+  .tscroll { overflow-x:auto; }
   tr.off td:not(.c) { opacity:.45; }
   .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
   .grow { flex:1; }
@@ -86,10 +89,10 @@
         <span class="mut" id="dirty"></span>
         <button class="primary" id="save" disabled>Save changes</button>
       </div>
-      <table>
+      <div class="tscroll"><table>
         <thead><tr><th class="c srt" data-sort="enabled">Deploy<span class="sarr"></span></th><th class="srt" data-sort="name">Name<span class="sarr"></span></th><th class="srt" data-sort="login">Login<span class="sarr"></span></th><th class="srt" data-sort="server">Broker / server<span class="sarr"></span></th><th class="srt" data-sort="kite">Kite ID<span class="sarr"></span></th><th>Public IP</th><th class="srt" data-sort="region">Region<span class="sarr"></span></th><th></th></tr></thead>
         <tbody id="vmRows"></tbody>
-      </table>
+      </table></div>
       <div id="kiteSummary" style="margin-top:12px;font-size:13px"></div>
     </div>
 
@@ -101,7 +104,7 @@
         <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px;width:auto"><input type="checkbox" id="dryrun" style="width:auto"> dry run</label>
       </div>
       <div class="grid">
-        <div><label>Only this VM (blank = all enabled)</label><input id="onlyVm" placeholder="blank = all enabled VMs"></div>
+        <div><label>Only this VM (blank = whole fleet)</label><input id="onlyVm" placeholder="blank = all VMs"></div>
         <div style="display:flex;gap:10px;align-items:flex-end">
           <button class="primary" id="runProvision" type="button">▶ Provision now</button>
           <button id="runDestroy" type="button">■ Destroy now</button>
@@ -140,7 +143,7 @@
           </div>
           <div style="margin-top:12px"><button class="primary" type="submit" id="formSubmit">Add to list</button>
             <button type="button" id="cancelEdit" hidden>Cancel</button>
-            <span class="mut">— then click <b>Save changes</b>.</span></div>
+            <span class="mut">— a new VM saves automatically; edits need <b>Save changes</b>.</span></div>
         </form>
       </details>
     </div>
@@ -235,7 +238,7 @@ const BROKERS = {
                  maxLots: { key: 'PLATFORMAPI_MAX_ORDER_LOTS' } },
 };
 
-let doc = null, sha = null, vmsNode = null, dirty = false;
+let doc = null, sha = null, vmsNode = null, dirty = false, lastCommit = '';
 const $ = s => document.querySelector(s);
 const log = (m, cls='mut') => { const e=$('#log'); e.innerHTML = `<span class="${cls}">${m}</span>`; };
 
@@ -347,13 +350,17 @@ function render(){
       `<td>${esc(brokerServer(it))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
       `<td>${esc(fld(it,'name') + (isMumbaiAws ? '-eip' : '-pip'))}</td>`+
       `<td>${esc(region)}</td>`+
-      `<td class="actions"><button type="button" data-edit="${i}">Edit</button>`+
-      `<button type="button" class="danger" data-del="${i}">Delete</button></td>`;
+      `<td><div class="acts"><button type="button" class="go" data-start="${i}" title="Provision this VM now">▶ Start</button>`+
+      `<button type="button" class="danger" data-destroy="${i}" title="Deprovision (tear down) this VM now">■ Delete</button>`+
+      `<button type="button" data-edit="${i}">Edit</button>`+
+      `<button type="button" class="danger" data-del="${i}" title="Deprovision this VM and remove it from config.yaml">Remove</button></div></td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
     cb.closest('tr').classList.toggle('off',!cb.checked); markDirty(true);
   }));
+  tb.querySelectorAll('button[data-start]').forEach(b=>b.addEventListener('click',()=>startVm(+b.dataset.start)));
+  tb.querySelectorAll('button[data-destroy]').forEach(b=>b.addEventListener('click',()=>destroyVm(+b.dataset.destroy)));
   tb.querySelectorAll('button[data-edit]').forEach(b=>b.addEventListener('click',()=>editVm(+b.dataset.edit)));
   tb.querySelectorAll('button[data-del]').forEach(b=>b.addEventListener('click',()=>deleteVm(+b.dataset.del)));
   updateSortIndicators();
@@ -385,17 +392,21 @@ function syncEnabled(){
   });
 }
 
+// Commit the in-memory config.yaml. Resolves true on success, false on any
+// failure (already logged) so callers like dispatch() can stop before running a
+// workflow against a stale config.
 async function save(){
-  if(!doc) return;
+  if(!doc) return false;
   syncEnabled();
   log('Saving …');
   const body={message:'dashboard: update fleet deploy/config',content:b64encode(doc.toString()),sha,branch:BRANCH};
   let r; try{ r=await fetch(API,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)}); }
-  catch(e){ return log('Network error: '+e.message,'err'); }
-  if(r.status===409) return log('Conflict (409): file changed on GitHub. Click Reload, then redo.','err');
-  if(!r.ok) return log('Save failed '+r.status+': '+await r.text(),'err');
-  const j=await r.json(); sha=j.content.sha; markDirty(false);
-  log('Saved · commit '+j.commit.sha.slice(0,7)+' · the next 08:30 IST run will use it.','ok');
+  catch(e){ log('Network error: '+e.message,'err'); return false; }
+  if(r.status===409){ log('Conflict (409): file changed on GitHub. Click Reload, then redo.','err'); return false; }
+  if(!r.ok){ log('Save failed '+r.status+': '+esc(await r.text()),'err'); return false; }
+  const j=await r.json(); sha=j.content.sha; lastCommit=j.commit.sha.slice(0,7); markDirty(false);
+  log('Saved · commit '+lastCommit+' · the next 08:30 IST run will use it.','ok');
+  return true;
 }
 
 // Write the form's fields onto a VM map node (shared by add + edit). Region
@@ -459,15 +470,18 @@ function applyFields(item, f){
   else if(item.has('autoShutdown')) item.delete('autoShutdown');
 }
 
-function submitForm(e){
+// A new VM is committed straight away (no separate Save click); an Edit stays
+// pending until Save changes, so several tweaks can go in one commit.
+async function submitForm(e){
   e.preventDefault(); const f=e.target;
   const name=f.vmname.value.trim(); if(!name) return;
   syncEnabled();                                      // keep unsaved deploy toggles
-  const idx=f.editIndex.value; let verb;
-  if(idx===''){ const item=doc.createNode({}); item.set('enabled',true); applyFields(item,f); vmsNode.add(item); verb='Added'; }
-  else { applyFields(vmsNode.items[+idx],f); verb='Updated'; }
+  const idx=f.editIndex.value, isNew=(idx==='');
+  if(isNew){ const item=doc.createNode({}); item.set('enabled',true); applyFields(item,f); vmsNode.add(item); }
+  else applyFields(vmsNode.items[+idx],f);
   render(); resetForm(); $('#addPanel').open=false; markDirty(true);
-  log(verb+' '+name+' — click Save changes to commit.','ok');
+  if(!isNew) return log('Updated '+esc(name)+' — click Save changes to commit.','ok');
+  if(await save()) log('Added and saved '+esc(name)+' · commit '+lastCommit+'.','ok');
 }
 
 function editVm(i){
@@ -500,17 +514,30 @@ function editVm(i){
   f.scrollIntoView({behavior:'smooth',block:'center'});
 }
 
-// Remove a VM entry from config.yaml. Only edits the file (the row disappears and
-// won't be provisioned at the next run); it does NOT tear down an already-running
-// cloud VM / IP -- use the Destroy workflow for that. Resets the edit form since
-// splicing shifts the indices the form's editIndex points at.
-function deleteVm(i){
-  const it=vmsNode.items[i], name=fld(it,'name') || `VM #${i+1}`;
-  if(!confirm(`Delete "${name}" from config.yaml?\n\nThis removes the entry so it won't be provisioned. Click Save changes to commit.\n\n(Any already-running VM / public IP is not touched — use Destroy for that.)`)) return;
+// Remove a VM for good: tear down its cloud VM (destroy workflow, a no-op if it's
+// already gone), then drop the entry from config.yaml and commit. Order matters:
+// a dispatched run checks out the commit main was at when triggered, so the
+// destroy still sees this entry (its city -> Azure/AWS routing) even though the
+// removal is committed a moment later. Its now-detached public IP is left for the
+// next scheduled destroy's orphan prune. Resets the edit form since splicing
+// shifts the indices the form's editIndex points at.
+async function deleteVm(i){
+  const it=vmsNode.items[i], name=fld(it,'name');
+  const dry=$('#dryrun').checked;
+  if(!confirm(`Remove "${name || 'VM #'+(i+1)}"?\n\n`+
+    (name ? `1. Deprovisions the cloud VM, its disk and NIC (nothing happens if it's already gone).\n2. Removes the entry from config.yaml and saves.` : `This VM has no name, so there is no cloud VM to deprovision — the entry is just removed from config.yaml and saved.`)+
+    (dry ? `\n\nDry run is ticked: the deprovision is a dry run and the entry is kept.` : ''))) return;
+  if(name && !(await dispatch('destroy-vm.yml',wfInputs(name),'Destroy '+name,false))){
+    $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(name)} was not removed from config.yaml.</span>`);
+    return;
+  }
+  if(dry) return;
   syncEnabled();                                      // keep unsaved deploy toggles
-  vmsNode.items.splice(i,1);
+  const idx=vmsNode.items.indexOf(it); if(idx<0) return;
+  vmsNode.items.splice(idx,1);
   render(); resetForm(); $('#addPanel').open=false; markDirty(true);
-  log('Removed '+name+' — click Save changes to commit.','ok');
+  if(await save()) log((name?'Deprovision triggered and removed ':'Removed ')+esc(name||'unnamed VM')+' from config.yaml · commit '+lastCommit+
+    ` — <a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">view run →</a>`,'ok');
 }
 
 function resetForm(){
@@ -536,20 +563,54 @@ updateBrokerFields();
 
 // Trigger a GitHub Actions workflow (workflow_dispatch) so the operator can run
 // provision/destroy without opening GitHub. Needs the token's Actions:write scope.
-async function dispatch(workflow, inputs, label){
-  if(!tok()) return log('Set a token first.','err');
-  if(!confirm(`Run the "${label}" workflow now on ${BRANCH}?`)) return;
+// Unsaved edits are committed first: the workflow checks out main, so it must
+// see the same config.yaml the operator is looking at. A failed save aborts.
+// `ask` overrides the confirm text; pass false when the caller already confirmed.
+// Resolves true only when the workflow was actually triggered.
+async function dispatch(workflow, inputs, label, ask){
+  if(!tok()){ log('Set a token first.','err'); return false; }
+  if(inputs.dry_run==='true') label+=' (dry run)';
+  if(ask!==false && !confirm(ask || `Run the "${label}" workflow now on ${BRANCH}?`)) return false;
+  if(dirty && !(await save())){
+    $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(label)} not triggered — config could not be saved.</span>`);
+    return false;
+  }
   log(`Triggering ${label} …`);
   const url=`https://api.github.com/repos/${REPO}/actions/workflows/${workflow}/dispatches`;
   let r; try{ r=await fetch(url,{method:'POST',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify({ref:BRANCH,inputs})}); }
-  catch(e){ return log('Network error: '+e.message,'err'); }
-  if(r.status===204) return log(`${label} triggered ✓ — <a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">view run →</a>`,'ok');
-  if(r.status===403) return log('403 — the token lacks Actions permission. Regenerate it with <b>Actions: Read and write</b> (see token setup).','err');
-  if(r.status===404) return log('404 — workflow not found or the token has no Actions access.','err');
-  return log(`Trigger failed ${r.status}: `+esc(await r.text()),'err');
+  catch(e){ log('Network error: '+e.message,'err'); return false; }
+  if(r.status===204){ log(`${label} triggered ✓ — <a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">view run →</a>`,'ok'); return true; }
+  if(r.status===403) log('403 — the token lacks Actions permission. Regenerate it with <b>Actions: Read and write</b> (see token setup).','err');
+  else if(r.status===404) log('404 — workflow not found or the token has no Actions access.','err');
+  else log(`Trigger failed ${r.status}: `+esc(await r.text()),'err');
+  return false;
 }
-$('#runProvision').onclick=()=>{ const inputs={dry_run:String($('#dryrun').checked)}; const only=$('#onlyVm').value.trim(); if(only) inputs.only=only; dispatch('provision-vm.yml',inputs,'Provision'); };
-$('#runDestroy').onclick=()=>dispatch('destroy-vm.yml',{dry_run:String($('#dryrun').checked)},'Destroy');
+// Both workflows take `only` (one VM name); blank = the whole fleet.
+function wfInputs(only){ const inputs={dry_run:String($('#dryrun').checked)}; if(only) inputs.only=only; return inputs; }
+$('#runProvision').onclick=()=>{ const only=$('#onlyVm').value.trim(); dispatch('provision-vm.yml',wfInputs(only),only?'Provision '+only:'Provision'); };
+$('#runDestroy').onclick=()=>{ const only=$('#onlyVm').value.trim(); dispatch('destroy-vm.yml',wfInputs(only),only?'Destroy '+only:'Destroy'); };
+
+// Per-row ▶ Start: provision just this VM. The provisioner skips enabled:false
+// entries even when named via `only`, so an unchecked VM gets its Deploy box
+// ticked first (saved along with any other pending edits by dispatch()).
+function startVm(i){
+  const name=fld(vmsNode.items[i],'name'); if(!name) return log('This VM has no name — Edit it first.','err');
+  const cb=document.querySelector(`#vmRows input[data-i="${i}"]`);
+  let ask=`Provision "${name}" now?`;
+  if(!cb.checked) ask+=`\n\nIts Deploy box is unchecked and the provisioner skips disabled VMs, so Deploy will be turned on (and saved) first.`;
+  else if(dirty) ask+=`\n\nUnsaved changes will be saved first.`;
+  if(!confirm(ask)) return;
+  if(!cb.checked){ cb.checked=true; cb.closest('tr').classList.remove('off'); markDirty(true); }
+  dispatch('provision-vm.yml',wfInputs(name),'Provision '+name,false);
+}
+// Per-row ■ Delete: tear down just this VM's cloud resources (VM + disk + NIC;
+// the public IP is kept). The config.yaml entry stays — Remove drops it too.
+function destroyVm(i){
+  const name=fld(vmsNode.items[i],'name'); if(!name) return log('This VM has no name — Edit it first.','err');
+  dispatch('destroy-vm.yml',wfInputs(name),'Destroy '+name,
+    `Deprovision "${name}" now?\n\nDeletes the running VM, its disk and NIC (its public IP is kept for reuse). The entry stays in config.yaml.`+
+    (dirty?`\n\nUnsaved changes will be saved first.`:''));
+}
 
 window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
 
