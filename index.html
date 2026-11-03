@@ -4,153 +4,447 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SYMTEX-CIN Trading Fleet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0f1419; --card:#1a2029; --line:#2a323d; --fg:#e6e9ef; --mut:#9aa6b2;
-          --ok:#3fb950; --err:#f85149; --accent:#2f81f7; }
-  * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
-  .wrap { max-width:1180px; margin:0 auto; padding:24px 18px 60px; }
-  h1 { font-size:22px; margin:0 0 4px; }
-  .sub { color:var(--mut); margin:0 0 20px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:18px; }
-  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line);
-           background:#222b36; color:var(--fg); cursor:pointer; }
-  button:hover { border-color:var(--accent); }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  button.danger { color:var(--err); }
-  button.danger:hover { border-color:var(--err); background:#2a1114; }
-  button.go { color:var(--ok); }
-  button.go:hover { border-color:var(--ok); background:#0f2416; }
-  input, select { font:inherit; padding:7px 9px; border-radius:7px; border:1px solid var(--line);
-                  background:#0d1117; color:var(--fg); width:100%; }
-  label { display:block; font-size:13px; color:var(--mut); margin:0 0 4px; }
-  table { width:100%; border-collapse:collapse; }
-  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
-  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
-  td.c, th.c { text-align:center; width:64px; }
-  .acts { display:grid; grid-template-columns:repeat(2,auto); gap:6px; justify-content:end; }
-  .acts button { padding:6px 10px; white-space:nowrap; }
-  @media (min-width:1150px) { .acts { grid-template-columns:repeat(4,auto); } }
-  .tscroll { overflow-x:auto; }
-  tr.off td:not(.c) { opacity:.45; }
-  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  :root {
+    color-scheme: light dark;
+    --paper:#F3F5F7; --surface:#FFFFFF; --sunk:#EBEFF3; --ink:#14202E; --muted:#5B6B7C;
+    --line:#D9E0E7; --line-strong:#B9C4CF;
+    --go:#0F7B6C; --go-ink:#FFFFFF; --go-soft:#E2F1EE;
+    --stop:#B8432F; --stop-soft:#F8E8E4;
+    --pre:#B97C0C; --pre-soft:#FBF0D9;
+    --focus:#2563EB;
+    /* the trading-day band: the one dark surface on the light page */
+    --band:#14202E; --band-ink:#EEF3F7; --band-muted:#9FB0C1; --band-line:#2E3E50;
+    --band-session:#2FA58F; --band-pre:#E2AE45; --band-stop:#EE7A63;
+    --shadow:0 18px 50px rgba(20,32,46,.22);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0E1620; --surface:#152130; --sunk:#111B27; --ink:#E3E9EF; --muted:#8C9DAF;
+      --line:#243243; --line-strong:#33465A;
+      --go:#36B39C; --go-ink:#06231E; --go-soft:#12302B;
+      --stop:#EE7A63; --stop-soft:#3A1E19;
+      --pre:#E2AE45; --pre-soft:#33280F;
+      --focus:#7AA7FF;
+      --band:#1B2A3B; --band-line:#33485F;
+      --shadow:0 18px 50px rgba(0,0,0,.5);
+    }
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font:400 15px/1.5 Barlow, system-ui, sans-serif; }
+  .num { font-variant-numeric:tabular-nums; }
+  a { color:inherit; text-underline-offset:3px; }
+  h1,h2,h3 { margin:0; }
+  [hidden] { display:none !important; }
+  :focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+  .muted { color:var(--muted); }
   .grow { flex:1; }
-  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+
+  .wrap { max-width:1180px; margin:0 auto; padding:0 24px; }
+
+  /* ---------- buttons & switches ---------- */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:36px; padding:0 14px;
+         border-radius:8px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink);
+         font:600 14px/1 Barlow, system-ui, sans-serif; cursor:pointer; white-space:nowrap; }
+  .btn:hover { border-color:var(--ink); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn svg { width:12px; height:12px; flex:none; }
+  .btn-go { background:var(--go); border-color:var(--go); color:var(--go-ink); }
+  .btn-go:hover { border-color:var(--go); filter:brightness(1.08); }
+  .btn-stop { background:var(--stop); border-color:var(--stop); color:#fff; }
+  .btn-stop:hover { border-color:var(--stop); filter:brightness(1.08); }
+  .btn-ghost { border-color:transparent; background:transparent; }
+  .btn-ghost:hover { border-color:var(--line-strong); }
+  .btn-sm { height:30px; padding:0 10px; font-size:13px; }
+  .btn-go-o { color:var(--go); }
+  .btn-go-o:hover { border-color:var(--go); background:var(--go-soft); }
+  .btn-stop-o { color:var(--stop); }
+  .btn-stop-o:hover { border-color:var(--stop); background:var(--stop-soft); }
+  .btn-icon { width:30px; padding:0; }
+  .btn-icon svg { width:14px; height:14px; }
+
+  input.sw { appearance:none; -webkit-appearance:none; margin:0; flex:none; width:38px; height:22px; border-radius:999px;
+             background:var(--line-strong); position:relative; cursor:pointer; transition:background .15s; }
+  input.sw::before { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%;
+                     background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:transform .15s; }
+  input.sw:checked { background:var(--go); }
+  input.sw:checked::before { transform:translateX(16px); }
+  input.sw.sw-pre:checked { background:var(--pre); }
+
+  /* ---------- header ---------- */
+  .top { display:flex; align-items:center; gap:10px; padding:20px 0 16px; }
+  .top h1 { font:600 26px/1 "Barlow Condensed", Barlow, sans-serif; letter-spacing:.01em; }
+  .top h1 span { color:var(--muted); font-weight:500; }
+  .dry { display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:14px; cursor:pointer;
+         padding:6px 10px; border-radius:8px; }
+  body.is-dry .dry { background:var(--pre-soft); color:var(--pre); }
+
+  /* ---------- token setup ---------- */
+  .setup { max-width:620px; margin:40px 0 80px; }
+  .setup h2 { font-size:28px; line-height:1.15; font-weight:700; margin-bottom:10px; }
+  .setup p { margin:0 0 14px; max-width:62ch; }
+  .setup ol { margin:0 0 22px; padding-left:22px; max-width:62ch; }
+  .setup li { margin:6px 0; padding-left:4px; }
+  .setup code { background:var(--sunk); border-radius:5px; padding:1px 5px; font-size:14px; }
+  .tok-row { display:flex; gap:10px; }
+  .tok-row input { flex:1; }
+  .tok-err { color:var(--stop); font-weight:600; }
+
+  /* ---------- trading-day band ---------- */
+  .day { background:var(--band); color:var(--band-ink); border-radius:18px; padding:22px 26px 18px; margin-bottom:22px; }
+  .day-head { display:grid; grid-template-columns:auto 1fr auto; gap:6px 26px; align-items:center; }
+  .clock { display:flex; align-items:baseline; gap:8px; }
+  .clock-t { font:600 64px/0.9 "Barlow Condensed", Barlow, sans-serif; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+  .clock-z { font:500 18px/1 "Barlow Condensed", Barlow, sans-serif; color:var(--band-muted); }
+  .day-status { margin:0; font-size:17px; max-width:44ch; }
+  .day-status small { display:block; color:var(--band-muted); font-size:14px; margin-top:2px; }
+  .day-acts { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .band-go { background:var(--band-session); border-color:var(--band-session); color:#06231E; }
+  .band-go:hover { border-color:var(--band-session); filter:brightness(1.1); }
+  .band-stop { background:transparent; border-color:var(--band-line); color:var(--band-ink); }
+  .band-stop:hover { border-color:var(--band-stop); color:var(--band-stop); }
+
+  .tl-wrap { position:relative; padding:26px 0 26px; margin:18px 0 4px; }
+  .track { position:relative; height:12px; border-radius:6px; background:rgba(255,255,255,.08); }
+  .hour { position:absolute; top:-3px; bottom:-3px; width:1px; background:rgba(255,255,255,.14); }
+  .session { position:absolute; top:0; bottom:0; left:14.706%; width:73.529%; border-radius:6px;
+             background:var(--band-session); opacity:.85; }
+  .mk { position:absolute; top:-8px; bottom:-8px; width:3px; margin-left:-1.5px; border-radius:2px; }
+  .mk-pre { background:var(--band-pre); }
+  .mk-stop { background:var(--band-stop); }
+  .mk.paused { background:transparent; border-left:2px dashed var(--band-muted); width:0; margin-left:-1px; }
+  .needle { position:absolute; top:-12px; bottom:-12px; width:2px; margin-left:-1px; background:var(--band-ink); border-radius:1px; }
+  .needle::after { content:""; position:absolute; top:-5px; left:-4px; width:10px; height:10px; border-radius:50%; background:var(--band-ink); }
+  .tl { position:absolute; font-size:13px; line-height:1; color:var(--band-muted); white-space:nowrap; }
+  .tl b { color:var(--band-ink); font-weight:600; font-variant-numeric:tabular-nums; margin-right:5px; }
+  .tl-up { top:0; } .tl-down { bottom:0; }
+  .tl-r { transform:translateX(-100%); }
+  .dry-note { margin:6px 0 0; color:var(--band-pre); font-weight:600; font-size:14px; }
+
+  .runs { border-top:1px solid var(--band-line); margin-top:14px; padding-top:12px; }
+  .runs h2 { font-size:14px; font-weight:600; color:var(--band-muted); margin-bottom:6px; }
+  .runs ul { list-style:none; margin:0; padding:0; }
+  .runs li { display:grid; grid-template-columns:10px minmax(150px,auto) 90px 1fr auto; gap:12px; align-items:center;
+             padding:5px 0; font-size:14px; }
+  .runs .rt { color:var(--band-muted); }
+  .runs a { color:var(--band-ink); font-weight:600; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--band-muted); }
+  .d-ok { background:var(--band-session); } .d-bad { background:var(--band-stop); }
+  .d-run, .d-wait { background:var(--band-pre); }
+
+  /* ---------- VM sheet ---------- */
+  .sheet { background:var(--surface); border:1px solid var(--line); border-radius:14px; margin-bottom:22px; }
+  .sheet-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:16px 18px; border-bottom:1px solid var(--line); }
+  .sheet-bar h2 { font-size:20px; font-weight:700; line-height:1.1; }
+  .sheet-bar p { margin:2px 0 0; font-size:14px; }
+  .search { position:relative; }
+  .search svg { position:absolute; left:10px; top:50%; width:15px; height:15px; margin-top:-7.5px; color:var(--muted); pointer-events:none; }
+  .search input[type=search] { padding-left:32px; width:260px; }
+  .seg { display:inline-flex; border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; }
+  .seg button { border:0; background:transparent; color:var(--muted); font:600 13px/1 Barlow, sans-serif;
+                height:34px; padding:0 12px; cursor:pointer; }
+  .seg button + button { border-left:1px solid var(--line-strong); }
+  .seg button[aria-pressed="true"] { background:var(--ink); color:var(--surface); }
+
+  .cols { display:grid; grid-template-columns:64px minmax(170px,1.5fr) minmax(140px,1.2fr) 90px 96px 120px 236px;
+          column-gap:16px; align-items:center; padding:0 18px; }
+  .vh { min-height:40px; font-size:13px; color:var(--muted); border-bottom:1px solid var(--line); }
+  .vh button { all:unset; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; gap:4px; }
+  .vh button:hover { color:var(--ink); }
+  .vh button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:3px; }
+  .sarr { font-size:10px; }
+  .vr { min-height:62px; padding-top:9px; padding-bottom:9px; border-bottom:1px solid var(--line); }
+  .vr:last-child { border-bottom:0; }
+  .vr .meta { display:contents; }
+  .vr.off .c-name, .vr.off .meta > div { opacity:.5; }
+  .c-name, .c-broker { min-width:0; display:flex; flex-direction:column; }
+  .name-btn { all:unset; cursor:pointer; font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .name-btn:hover { text-decoration:underline; text-underline-offset:3px; }
+  .name-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:3px; }
+  .sub { font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .c-broker > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .c-acts { display:flex; gap:6px; justify-content:flex-end; }
+  .empty { padding:40px 18px; text-align:center; }
+  .empty p { margin:0 0 12px; color:var(--muted); font-size:16px; }
+
+  /* ---------- kite ---------- */
+  .kite { padding:0 2px 120px; }
+  .kite h2 { font-size:16px; font-weight:700; }
+  .kite p { margin:2px 0 10px; font-size:14px; }
+  .chip { display:inline-flex; gap:8px; align-items:baseline; padding:4px 11px; margin:0 6px 6px 0; border-radius:999px;
+          background:var(--surface); border:1px solid var(--line); font-size:14px; }
+  .chip span { color:var(--muted); }
+
+  /* ---------- status bar ---------- */
+  .bar-shell { position:sticky; bottom:0; z-index:5; padding-bottom:14px; pointer-events:none; }
+  .bar { pointer-events:auto; display:flex; align-items:center; gap:10px; min-height:56px; padding:10px 12px 10px 18px;
+         background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); }
+  #log { font-size:14px; min-width:0; }
+  #log a { font-weight:600; }
+  .ok { color:var(--go); } .err { color:var(--stop); }
+  .dirty-note { font-weight:600; color:var(--pre); white-space:nowrap; }
+  .bar:not(.dirty) .dirty-note, .bar:not(.dirty) #discard { display:none; }
+
+  /* ---------- form controls ---------- */
+  input:not([type=checkbox]), select { font:400 15px/1.2 Barlow, system-ui, sans-serif; height:38px; padding:0 11px;
+         border-radius:8px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); width:100%; }
+  input:not([type=checkbox]):focus, select:focus { border-color:var(--focus); outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent); }
+  label.f { display:block; font-size:13px; font-weight:600; color:var(--muted); margin:0 0 5px; }
+
+  /* ---------- dialogs ---------- */
+  dialog { color:var(--ink); background:var(--surface); border:0; padding:0; box-shadow:var(--shadow); }
+  dialog::backdrop { background:rgba(10,18,28,.5); }
+  .editor { margin:0 0 0 auto; width:min(540px,100vw); height:100dvh; max-height:none; max-width:100vw; border-radius:16px 0 0 16px; }
+  .editor[open] { animation:slide .2s ease-out; }
+  @keyframes slide { from { transform:translateX(30px); opacity:0; } }
+  .editor form { display:flex; flex-direction:column; height:100%; }
+  .ed-head { display:flex; align-items:center; gap:10px; padding:20px 24px 14px; border-bottom:1px solid var(--line); }
+  .ed-head h2 { font-size:22px; font-weight:700; }
+  .ed-body { flex:1; overflow:auto; padding:6px 24px 24px; }
+  .ed-body h3 { font-size:15px; font-weight:700; margin:20px 0 10px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .grid .full { grid-column:1/-1; }
-  details summary { cursor:pointer; font-weight:600; padding:6px 0; }
-  th.srt { cursor:pointer; user-select:none; }
-  th.srt:hover { color:#fff; }
-  .sarr { font-size:11px; opacity:.75; margin-left:3px; }
-  #log { background:#0a0d11; border:1px solid var(--line); border-radius:8px; padding:10px 12px;
-         white-space:pre-wrap; font:13px/1.5 ui-monospace,Consolas,monospace; max-height:220px; overflow:auto; margin-top:6px; }
-  .ok{color:var(--ok)} .err{color:var(--err)} .mut{color:var(--mut)}
-  code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:13px}
-  a{color:var(--accent)}
-  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--mut)}
-  .pill.on{color:var(--ok);border-color:var(--ok)} .pill.no{color:var(--err);border-color:var(--err)}
-  ol{margin:6px 0 0 18px;padding:0} ol li{margin:4px 0}
+  .ed-foot { display:flex; align-items:center; gap:10px; padding:14px 24px; border-top:1px solid var(--line); }
+  .ed-foot p { margin:0; font-size:13px; color:var(--muted); flex:1; }
+  .ask { width:min(460px, calc(100vw - 32px)); border-radius:16px; }
+  .ask[open] { animation:pop .16s ease-out; }
+  @keyframes pop { from { transform:scale(.97); opacity:0; } }
+  .ask form { padding:22px 24px 18px; }
+  .ask h2 { font-size:21px; font-weight:700; margin-bottom:8px; }
+  .ask p { margin:0 0 10px; }
+  .ask ul { margin:0 0 10px; padding-left:20px; } .ask li { margin:4px 0; }
+  .ask .note-pre { color:var(--pre); font-weight:600; }
+  .ask-acts { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+  .menu { inset:auto; margin:0; position:fixed; padding:6px; min-width:170px; border:1px solid var(--line);
+          border-radius:10px; background:var(--surface); color:var(--ink); box-shadow:var(--shadow); }
+  .menu button { all:unset; box-sizing:border-box; display:block; width:100%; padding:9px 12px; border-radius:6px;
+                 font-weight:600; font-size:14px; cursor:pointer; }
+  .menu button:hover, .menu button:focus-visible { background:var(--sunk); outline:none; }
+  .menu button.danger { color:var(--stop); }
+  .menu small { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation:none !important; transition:none !important; }
+  }
+
+  /* ---------- narrow screens ---------- */
+  @media (max-width: 1000px) {
+    .day-head { grid-template-columns:auto 1fr; }
+    .day-acts { grid-column:1/-1; justify-content:flex-start; }
+    .search input[type=search] { width:200px; }
+  }
+  @media (max-width: 780px) {
+    .wrap { padding:0 16px; }
+    .top { flex-wrap:wrap; row-gap:8px; padding:16px 0 12px; }
+    .top h1 { flex-basis:100%; font-size:24px; }
+    .top .grow { display:none; }
+    .dry { padding-left:0; white-space:nowrap; margin-right:auto; }
+    .bar:not(.dirty) #save { display:none; }
+    .vh { display:none; }
+    .cols { padding:0 14px; }
+    .vr { grid-template-columns:44px 1fr; grid-template-areas:"sw name" "sw meta" "sw acts"; row-gap:6px; align-items:start; padding-top:14px; padding-bottom:14px; }
+    .c-sw { grid-area:sw; padding-top:2px; }
+    .c-name { grid-area:name; }
+    .vr .meta { grid-area:meta; display:flex; flex-wrap:wrap; gap:2px 16px; font-size:14px; }
+    .c-broker { flex-direction:row; gap:6px; }
+    .meta [data-label]::before { content:attr(data-label) " "; color:var(--muted); }
+    .c-acts { grid-area:acts; justify-content:flex-start; }
+    .sheet-bar { padding:14px; }
+    .search { order:5; width:100%; } .search input[type=search] { width:100%; }
+    .clock-t { font-size:52px; }
+    .day { padding:18px 16px 14px; border-radius:14px; }
+    .day-head { grid-template-columns:1fr; }
+    .tl { font-size:12px; }
+    .tl .lbl-long { display:none; }
+    .runs li { grid-template-columns:10px 1fr auto; }
+    .runs .rs { display:none; }
+    .runs .rt { grid-column:2; grid-row:2; font-size:13px; }
+    .runs a { grid-row:1/3; grid-column:3; }
+    .bar { flex-wrap:wrap; }
+    #log { flex-basis:100%; }
+    .editor { width:100vw; border-radius:0; }
+    .grid { grid-template-columns:1fr; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>SYMTEX-CIN Trading Fleet</h1>
-  <p class="sub">Choose which VMs deploy at the next <b>08:30 IST</b> run, or add a new one. Changes save to <code>config.yaml</code>.</p>
+  <header class="top">
+    <h1>SYMTEX-CIN <span>fleet</span></h1>
+    <span class="grow"></span>
+    <label class="dry" title="Workflows only print what they would do; nothing is created or deleted">
+      <input type="checkbox" class="sw sw-pre" id="dryrun" role="switch"> Dry run
+    </label>
+    <button type="button" class="btn btn-ghost" id="reload" hidden>Reload</button>
+    <button type="button" class="btn btn-ghost" id="forget" hidden>Disconnect</button>
+  </header>
 
-  <!-- TOKEN -->
-  <div class="card" id="tokenCard">
-    <div class="toolbar">
-      <b>Access token</b>
-      <span class="pill" id="tokState">not set</span>
-      <span class="grow"></span>
-      <button id="forget" hidden>Forget token</button>
-    </div>
-    <div id="tokSetup">
-      <p class="mut" style="margin-top:0">Paste a GitHub fine-grained token (stored only in this browser). One-time setup:</p>
-      <ol>
-        <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a></li>
-        <li>Resource owner: <code>baid86</code> · Repository access: <b>Only select repositories</b> → <code>symtex-cin-trading-vm</code></li>
-        <li>Permissions → Repository → <b>Contents: Read and write</b> + <b>Actions: Read and write</b> (Actions lets you run the provision/destroy workflows from here). Metadata read-only is added automatically.</li>
-        <li>Pick an expiry, Generate, copy, paste below.</li>
-      </ol>
-      <div class="grid" style="margin-top:10px">
-        <div class="full"><input id="tok" type="password" placeholder="github_pat_..." autocomplete="off"></div>
-      </div>
-      <div style="margin-top:10px"><button class="primary" id="saveTok">Save token &amp; load</button></div>
-    </div>
-  </div>
+  <!-- TOKEN SETUP -->
+  <section class="setup" id="tokSetup" hidden>
+    <h2>Connect to the fleet</h2>
+    <p>This page edits <code>config.yaml</code> in <code>baid86/symtex-cin-trading-vm</code> and runs its workflows. It needs a GitHub token, which is stored only in this browser.</p>
+    <p class="tok-err" id="tokErr" hidden></p>
+    <ol>
+      <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub's new fine-grained token page</a>.</li>
+      <li>Resource owner <code>baid86</code>. Repository access: <b>Only select repositories</b>, then pick <code>symtex-cin-trading-vm</code>.</li>
+      <li>Under Repository permissions, set <b>Contents</b> and <b>Actions</b> to <b>Read and write</b>.</li>
+      <li>Choose an expiry, generate the token, and paste it below.</li>
+    </ol>
+    <form class="tok-row" id="tokForm">
+      <input id="tok" type="password" placeholder="github_pat_…" autocomplete="off" aria-label="GitHub token">
+      <button class="btn btn-go" type="submit">Connect</button>
+    </form>
+  </section>
 
-  <!-- APP -->
-  <div id="app" hidden>
-    <div class="card">
-      <div class="toolbar">
-        <button id="reload">Reload</button>
-        <span class="grow"></span>
-        <span class="mut" id="dirty"></span>
-        <button class="primary" id="save" disabled>Save changes</button>
-      </div>
-      <div class="tscroll"><table>
-        <thead><tr><th class="c srt" data-sort="enabled">Deploy<span class="sarr"></span></th><th class="srt" data-sort="name">Name<span class="sarr"></span></th><th class="srt" data-sort="login">Login<span class="sarr"></span></th><th class="srt" data-sort="server">Broker / server<span class="sarr"></span></th><th class="srt" data-sort="kite">Kite ID<span class="sarr"></span></th><th>Public IP</th><th class="srt" data-sort="region">Region<span class="sarr"></span></th><th></th></tr></thead>
-        <tbody id="vmRows"></tbody>
-      </table></div>
-      <div id="kiteSummary" style="margin-top:12px;font-size:13px"></div>
-    </div>
-
-    <!-- RUN WORKFLOWS -->
-    <div class="card">
-      <div class="toolbar">
-        <b>Run workflows</b>
-        <span class="grow"></span>
-        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px;width:auto"><input type="checkbox" id="dryrun" style="width:auto"> dry run</label>
-      </div>
-      <div class="grid">
-        <div><label>Only this VM (blank = whole fleet)</label><input id="onlyVm" placeholder="blank = all VMs"></div>
-        <div style="display:flex;gap:10px;align-items:flex-end">
-          <button class="primary" id="runProvision" type="button">▶ Provision now</button>
-          <button id="runDestroy" type="button">■ Destroy now</button>
+  <main id="app" hidden>
+    <!-- TRADING DAY -->
+    <section class="day" aria-label="Trading day">
+      <div class="day-head">
+        <div class="clock"><span class="clock-t" id="clock">--:--</span><span class="clock-z">IST</span></div>
+        <p class="day-status" id="dayStatus" aria-live="polite"></p>
+        <div class="day-acts">
+          <button type="button" class="btn band-go" id="runProvision" title="Provision every VM that is set to deploy">Start VMs</button>
+          <button type="button" class="btn band-stop" id="runDestroy" title="Delete every running VM in config.yaml">Delete all</button>
         </div>
       </div>
-      <p class="mut" style="margin:10px 0 0;font-size:13px">Triggers the GitHub Actions workflow on <code>main</code> — no need to open GitHub. Requires the token to also grant <b>Actions: Read and write</b>. <a href="https://github.com/baid86/symtex-cin-trading-vm/actions" target="_blank" rel="noopener">View runs →</a></p>
-    </div>
+      <div class="tl-wrap" aria-hidden="true">
+        <span class="tl tl-up" style="left:14.706%"><b>09:15</b><span class="lbl-long">market </span>opens</span>
+        <span class="tl tl-up tl-r" style="left:88.235%"><b>15:30</b>closes</span>
+        <div class="track" id="track">
+          <div class="session"></div>
+          <div class="mk mk-pre" id="mkProv" style="left:5.882%"></div>
+          <div class="mk mk-stop" id="mkDest" style="left:94.118%"></div>
+          <div class="needle" id="needle" hidden></div>
+        </div>
+        <span class="tl tl-down" id="lblProv" style="left:5.882%"><b>08:30</b>auto start</span>
+        <span class="tl tl-down tl-r" id="lblDest" style="left:94.118%"><b>16:00</b>auto delete</span>
+      </div>
+      <p class="dry-note" id="dryNote" hidden>Dry run is on. Start and Delete only print what they would do.</p>
+      <div class="runs" id="runs" hidden>
+        <h2>Recent workflow runs</h2>
+        <ul id="runList"></ul>
+      </div>
+    </section>
 
-    <div class="card">
-      <details id="addPanel">
-        <summary id="formSummary">+ Add a VM</summary>
-        <form id="addForm" style="margin-top:12px">
-          <input type="hidden" name="editIndex" value="">
-          <div class="grid">
-            <div><label>VM name</label><input name="vmname" required placeholder="e.g. NakodaFx30001"></div>
-            <div>
-              <label>Order broker</label>
-              <select name="broker" id="brokerSel"></select>
-            </div>
-            <!-- MT5 fields (Order broker = MetaTrader 5) -->
-            <div data-bfield="mt5"><label>MT5 login</label><input name="login" type="number" required placeholder="30001"></div>
-            <div data-bfield="mt5"><label>MT5 password</label><input name="password" required></div>
-            <div data-bfield="mt5"><label>MT5 server</label><input name="server" list="servers" required placeholder="NakodaFX-Trade"></div>
-            <!-- Non-MT5 broker fields (labels/visibility driven by the BROKERS registry) -->
-            <div data-bfield="user"><label id="bUserLbl">Username</label><input name="buser" placeholder="82017"></div>
-            <div data-bfield="pass"><label>Password</label><input name="bpass"></div>
-            <div data-bfield="bserver"><label id="bServerLbl">Server</label><input name="bserver"></div>
-            <div data-bfield="blots"><label id="bLotsLbl">Order lots (optional)</label><input name="blots"></div>
-            <div data-bfield="bmaxlots"><label>Max lots per order (optional)</label><input name="bmaxlots" placeholder="keep ≥ order lots; blank = no cap"></div>
-            <div><label>Kite user ID</label><input name="kite" placeholder="WB4977"></div>
-            <div>
-              <label>Region</label>
-              <select name="region"><option value="centralindia">Central India (Azure)</option><option value="southindia">South India / Chennai (Azure)</option><option value="indiasouthcentral">India South Central / Hyderabad (Azure)</option><option value="uksouth">UK South (Azure)</option><option value="westindia">West India (Azure)</option><option value="mumbai-aws">Mumbai (AWS)</option></select>
-            </div>
-            <div><label>App branch (optional)</label><input name="branch" placeholder="default: syntex"></div>
-          </div>
-          <div style="margin-top:12px"><button class="primary" type="submit" id="formSubmit">Add to list</button>
-            <button type="button" id="cancelEdit" hidden>Cancel</button>
-            <span class="mut">— a new VM saves automatically; edits need <b>Save changes</b>.</span></div>
-        </form>
-      </details>
+    <!-- VM LIST -->
+    <section class="sheet" aria-labelledby="vmTitle">
+      <div class="sheet-bar">
+        <div><h2 id="vmTitle">VMs</h2><p class="muted" id="fleetCount"></p></div>
+        <span class="grow"></span>
+        <div class="search">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <input type="search" id="q" placeholder="Search name, login, Kite ID" aria-label="Search VMs">
+        </div>
+        <div class="seg" role="group" aria-label="Show">
+          <button type="button" data-f="all" aria-pressed="true">All</button>
+          <button type="button" data-f="on" aria-pressed="false">Deploying</button>
+          <button type="button" data-f="off" aria-pressed="false">Off</button>
+        </div>
+        <button type="button" class="btn btn-go" id="addBtn">Add VM</button>
+      </div>
+      <div class="cols vh">
+        <button type="button" data-sort="enabled">Deploy<span class="sarr"></span></button>
+        <button type="button" data-sort="name">Name<span class="sarr"></span></button>
+        <button type="button" data-sort="server">Broker<span class="sarr"></span></button>
+        <button type="button" data-sort="login">Login<span class="sarr"></span></button>
+        <button type="button" data-sort="kite">Kite ID<span class="sarr"></span></button>
+        <button type="button" data-sort="region">Region<span class="sarr"></span></button>
+        <span></span>
+      </div>
+      <div id="vmRows"></div>
+    </section>
+
+    <section class="kite" aria-labelledby="kiteTitle">
+      <h2 id="kiteTitle">Kite IDs</h2>
+      <p class="muted" id="kiteLead"></p>
+      <div id="kiteSummary"></div>
+    </section>
+  </main>
+
+  <div class="bar-shell">
+    <div class="bar" id="bar">
+      <div id="log" role="status">Loading…</div>
+      <span class="grow"></span>
+      <span class="dirty-note">Unsaved changes</span>
+      <button type="button" class="btn btn-ghost" id="discard">Discard</button>
+      <button type="button" class="btn btn-go" id="save" disabled>Save changes</button>
     </div>
   </div>
-
-  <div id="log" class="mut">Ready.</div>
 </div>
+
+<!-- ROW MENU -->
+<div class="menu" id="rowMenu" popover role="menu">
+  <button type="button" role="menuitem" data-act="edit">Edit</button>
+  <button type="button" role="menuitem" class="danger" data-act="remove">Remove<small>Delete the VM and take it off this list</small></button>
+</div>
+
+<!-- CONFIRM -->
+<dialog class="ask" id="askDlg" aria-labelledby="askTitle">
+  <form method="dialog">
+    <h2 id="askTitle"></h2>
+    <div id="askBody"></div>
+    <div class="ask-acts">
+      <button class="btn" value="cancel" id="askCancel">Cancel</button>
+      <button class="btn btn-go" value="ok" id="askOk">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ADD / EDIT -->
+<dialog class="editor" id="editor" aria-labelledby="edTitle">
+  <form id="addForm">
+    <input type="hidden" name="editIndex" value="">
+    <div class="ed-head">
+      <h2 id="edTitle">Add a VM</h2>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-ghost btn-icon" id="edClose" aria-label="Close">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="ed-body">
+      <h3>VM</h3>
+      <div class="grid">
+        <div class="full"><label class="f" for="f-name">VM name</label><input id="f-name" name="vmname" required placeholder="e.g. NakodaFx30001" autocomplete="off"></div>
+        <div>
+          <label class="f" for="f-region">Region</label>
+          <select id="f-region" name="region"><option value="centralindia">Central India (Azure)</option><option value="southindia">South India / Chennai (Azure)</option><option value="indiasouthcentral">India South Central / Hyderabad (Azure)</option><option value="uksouth">UK South (Azure)</option><option value="westindia">West India (Azure)</option><option value="mumbai-aws">Mumbai (AWS)</option></select>
+        </div>
+        <div><label class="f" for="f-kite">Kite user ID</label><input id="f-kite" name="kite" placeholder="WB4977" autocomplete="off"></div>
+      </div>
+
+      <h3>Order broker</h3>
+      <div class="grid">
+        <div class="full"><label class="f" for="brokerSel">Broker</label><select name="broker" id="brokerSel"></select></div>
+        <!-- MT5 fields (broker = MetaTrader 5) -->
+        <div data-bfield="mt5"><label class="f" for="f-login">MT5 login</label><input id="f-login" name="login" type="number" required placeholder="30001"></div>
+        <div data-bfield="mt5"><label class="f" for="f-pass">MT5 password</label><input id="f-pass" name="password" required autocomplete="off"></div>
+        <div data-bfield="mt5" class="full"><label class="f" for="f-server">MT5 server</label><input id="f-server" name="server" list="servers" required placeholder="NakodaFX-Trade"></div>
+        <!-- Non-MT5 broker fields (labels/visibility driven by the BROKERS registry) -->
+        <div data-bfield="user"><label class="f" id="bUserLbl" for="f-buser">Username</label><input id="f-buser" name="buser" placeholder="82017" autocomplete="off"></div>
+        <div data-bfield="pass"><label class="f" for="f-bpass">Password</label><input id="f-bpass" name="bpass" autocomplete="off"></div>
+        <div data-bfield="bserver"><label class="f" id="bServerLbl" for="f-bserver">Server</label><input id="f-bserver" name="bserver"></div>
+        <div data-bfield="blots"><label class="f" id="bLotsLbl" for="f-blots">Order lots (optional)</label><input id="f-blots" name="blots"></div>
+        <div data-bfield="bmaxlots" class="full"><label class="f" for="f-bmax">Max lots per order (optional)</label><input id="f-bmax" name="bmaxlots" placeholder="Keep at or above order lots. Blank means no cap."></div>
+      </div>
+
+      <h3>Trading app</h3>
+      <div class="grid">
+        <div class="full"><label class="f" for="f-branch">App branch (optional)</label><input id="f-branch" name="branch" placeholder="Blank uses syntex"></div>
+      </div>
+    </div>
+    <div class="ed-foot">
+      <p id="edHint"></p>
+      <button type="button" class="btn" id="cancelEdit">Cancel</button>
+      <button type="submit" class="btn btn-go" id="formSubmit">Add and save</button>
+    </div>
+  </form>
+</dialog>
 
 <datalist id="servers">
   <option>PDMBulls-Server</option><option>SyntexCapital-Server</option><option>QuorionexMarkets-Live</option>
@@ -164,7 +458,8 @@ import YAML from 'https://esm.sh/yaml@2';
 const REPO = 'baid86/symtex-cin-trading-vm';
 const PATH = 'config.yaml';
 const BRANCH = 'main';
-const API = `https://api.github.com/repos/${REPO}/contents/${encodeURIComponent(PATH)}`;
+const GH = `https://api.github.com/repos/${REPO}`;
+const API = `${GH}/contents/${encodeURIComponent(PATH)}`;
 
 // Per-VM azure overrides for non-default regions. Central India = no override
 // (inherits common.azure). UK South / West India point at that region's snapshot
@@ -201,6 +496,9 @@ const REGION_PRESETS = {
     nsg: 'symtex-cin-hyd-nsg'
   }
 };
+// Short region names for the VM list.
+const REGION_LABEL = { centralindia:'Central India', southindia:'Chennai', indiasouthcentral:'Hyderabad',
+                       uksouth:'UK South', westindia:'West India', 'mumbai-aws':'Mumbai (AWS)' };
 
 // Order-broker registry. `mt5` is the classic MetaTrader flow (writes the
 // per-VM `mt5:` block; the provisioner stages the terminal login). Every other
@@ -217,46 +515,59 @@ const BROKERS = {
   mt5:         { label: 'MetaTrader 5' },
   suexch:      { label: 'SU Exch',      user: 'SUEXCH_USERNAME',   pass: 'SUEXCH_PASSWORD',
                  extra: { key: 'SUEXCH_SERVER', label: 'Server', def: 'su' },
-                 lots: { key: 'SUEXCH_ORDER_AMOUNT', ph: 'blank = broker breakup lot' } },
+                 lots: { key: 'SUEXCH_ORDER_AMOUNT', ph: 'Blank uses the broker breakup lot' } },
   p3exch:      { label: 'P3 Exch',      user: 'P3EXCH_USERNAME',   pass: 'P3EXCH_PASSWORD',
                  extra: { key: 'P3EXCH_SERVER', label: 'Server', def: 'p3' },
-                 lots: { key: 'P3EXCH_ORDER_AMOUNT', ph: 'blank = broker breakup lot' } },
+                 lots: { key: 'P3EXCH_ORDER_AMOUNT', ph: 'Blank uses the broker breakup lot' } },
   builcon:     { label: 'Builcon Pro',  user: 'BUILCON_USERNAME',  pass: 'BUILCON_PASSWORD',
-                 lots: { key: 'BUILCON_ORDER_LOTS', ph: 'blank = notional sizing' } },
+                 lots: { key: 'BUILCON_ORDER_LOTS', ph: 'Blank uses notional sizing' } },
   gmglobal:    { label: 'GM Global',    user: 'GMGLOBAL_USERNAME', pass: 'GMGLOBAL_PASSWORD',
-                 lots: { key: 'GMGLOBAL_ORDER_LOTS', ph: 'number or max; blank = notional sizing' } },
+                 lots: { key: 'GMGLOBAL_ORDER_LOTS', ph: 'A number or max. Blank uses notional sizing' } },
   anchor:      { label: 'Anchor Alpha', user: 'ANCHOR_USERNAME',   pass: 'ANCHOR_PASSWORD',
-                 lots: { key: 'ANCHOR_ORDER_LOTS', ph: 'blank = notional sizing' } },
+                 lots: { key: 'ANCHOR_ORDER_LOTS', ph: 'Blank uses notional sizing' } },
   oceanexch:   { label: 'Ocean Exch',   user: 'OCEANEXCH_ACCOUNT_CODE', userLabel: 'Account code',
                  pass: 'OCEANEXCH_PASSWORD',
-                 lots: { key: 'OCEANEXCH_ORDER_LOTS', ph: 'blank = notional sizing' } },
+                 lots: { key: 'OCEANEXCH_ORDER_LOTS', ph: 'Blank uses notional sizing' } },
   mplant:      { label: 'Money Plant',  user: 'MPLANT_USERNAME',   pass: 'MPLANT_PASSWORD',
-                 lots: { key: 'MPLANT_ORDER_LOTS', ph: 'blank = notional sizing' } },
+                 lots: { key: 'MPLANT_ORDER_LOTS', ph: 'Blank uses notional sizing' } },
   platformapi: { label: 'PlatformAPI (ArkTrader)', user: 'PLATFORMAPI_USERNAME', pass: 'PLATFORMAPI_PASSWORD',
                  extra: { key: 'PLATFORMAPI_BROKER', label: 'Broker company', def: 'UNICKON' },
-                 lots: { key: 'PLATFORMAPI_ORDER_LOTS', ph: 'blank = notional sizing' },
+                 lots: { key: 'PLATFORMAPI_ORDER_LOTS', ph: 'Blank uses notional sizing' },
                  maxLots: { key: 'PLATFORMAPI_MAX_ORDER_LOTS' } },
 };
 
-let doc = null, sha = null, vmsNode = null, dirty = false, lastCommit = '';
+let doc = null, sha = null, vmsNode = null, dirty = false, lastCommit = '', tokenBad = '';
+let sortCol = null, sortDir = 1, filterText = '', filterMode = 'all';
+// Whether each workflow's cron is live (true), commented out (false) or unknown (null).
+const sched = { provision: null, destroy: null };
+let runsTimer = null;
+
 const $ = s => document.querySelector(s);
-const log = (m, cls='mut') => { const e=$('#log'); e.innerHTML = `<span class="${cls}">${m}</span>`; };
+const log = (m, cls='') => { $('#log').innerHTML = `<span class="${cls}">${m}</span>`; };
+const runsLink = `<a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">View runs</a>`;
+const plural = (n, w) => `${n} ${w}${n===1?'':'s'}`;
 
 const tok = () => localStorage.getItem('ghpat') || '';
 function refreshTokUI(){
   const has = !!tok();
-  $('#tokState').textContent = has ? 'set' : 'not set';
-  $('#tokState').className = 'pill ' + (has?'on':'no');
+  $('#tokSetup').hidden = has && !tokenBad;
+  $('#tokErr').textContent = tokenBad; $('#tokErr').hidden = !tokenBad;
   $('#forget').hidden = !has;
-  $('#tokSetup').hidden = has;
+  $('#reload').hidden = !has || !!tokenBad;
+  if(!has || tokenBad) $('#app').hidden = true;
 }
-function markDirty(d){ dirty=d; $('#save').disabled=!d; $('#dirty').textContent = d?'unsaved changes':''; }
+function markDirty(d){ dirty=d; $('#bar').classList.toggle('dirty',d); $('#save').disabled=!d; }
 
 function b64decode(b){ const bin=atob(b.replace(/\s/g,'')); return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0))); }
 function b64encode(s){ const by=new TextEncoder().encode(s); let bin=''; for(const x of by) bin+=String.fromCharCode(x); return btoa(bin); }
 function H(){ return {Authorization:'Bearer '+tok(),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}; }
-const esc = s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fld = (it,p,d='') => { const v=it.getIn(p.split('.')); return (v===undefined||v===null)?d:v; };
+
+const isOn = it => it.has('enabled') ? !!it.get('enabled') : true;
+const isAws = it => it.has('city') && String(it.get('city')).toLowerCase()==='mumbai';
+const regionKey = it => isAws(it) ? 'mumbai-aws' : String(fld(it,'azure.location','centralindia'));
+const regionLabel = it => REGION_LABEL[regionKey(it)] || regionKey(it);
 
 // Which broker a VM entry trades through: env.ORDER_BROKER when set, else mt5.
 // (An unknown ORDER_BROKER value is still returned so the table shows it.)
@@ -264,10 +575,10 @@ const brokerOf = it => { const b=String(fld(it,'env.ORDER_BROKER')||'').trim().t
 // Login/account shown in the table for any broker kind.
 const brokerLogin = it => { const b=brokerOf(it); if(b==='mt5') return fld(it,'mt5.login');
   const s=BROKERS[b]; return s&&s.user ? fld(it,'env.'+s.user) : ''; };
-// Server-column display: MT5 server for mt5, else "broker · extra" (e.g. "suexch · su").
+// Sort key for the broker column: MT5 server for mt5, else "broker extra" (e.g. "suexch su").
 const brokerServer = it => { const b=brokerOf(it); if(b==='mt5') return fld(it,'mt5.server');
   const s=BROKERS[b]; const x=(s&&s.extra) ? fld(it,'env.'+s.extra.key) : '';
-  return x ? b+' · '+x : b; };
+  return x ? b+' '+x : b; };
 
 // Show/hide + require the per-broker form fields for the selected broker.
 function updateBrokerFields(){
@@ -297,115 +608,193 @@ function updateBrokerFields(){
 }
 
 async function load(){
-  if(!tok()){ refreshTokUI(); return; }
-  log('Loading config.yaml …');
-  let r; try{ r=await fetch(`${API}?ref=${BRANCH}`,{headers:H()}); }catch(e){ return log('Network error: '+e.message,'err'); }
-  if(r.status===401) return log('Token rejected (401). Re-check the token & its repo access.','err');
-  if(r.status===404) return log('Not found (404). Token must grant Contents access to '+REPO+'.','err');
-  if(!r.ok) return log('Load failed '+r.status+': '+await r.text(),'err');
+  if(!tok()){ refreshTokUI(); return log('Connect a GitHub token to manage the fleet.'); }
+  log('Loading config.yaml…');
+  let r; try{ r=await fetch(`${API}?ref=${BRANCH}`,{headers:H()}); }
+  catch(e){ return log('Could not reach GitHub ('+esc(e.message)+'). Check your connection, then click Reload.','err'); }
+  if(r.status===401 || r.status===404){
+    tokenBad = r.status===401 ? 'GitHub rejected this token. It may have expired, so paste a new one.'
+                              : `This token can't see ${REPO}. Give it Contents access to that repository, or paste a different token.`;
+    refreshTokUI(); return log(tokenBad,'err');
+  }
+  if(!r.ok) return log('Loading failed ('+r.status+'): '+esc(await r.text()),'err');
+  tokenBad='';
   const j=await r.json(); sha=j.sha;
   doc=YAML.parseDocument(b64decode(j.content));
   vmsNode=doc.get('vms');
   if(!vmsNode||!vmsNode.items) return log('config.yaml has no vms: list.','err');
-  render(); $('#app').hidden=false; markDirty(false);
-  log('Loaded '+vmsNode.items.length+' VMs.','ok');
+  refreshTokUI(); $('#app').hidden=false; render(); markDirty(false);
+  log('Loaded '+plural(vmsNode.items.length,'VM')+' from config.yaml.','ok');
+  loadSchedules(); loadRuns();
 }
 
-let sortCol=null, sortDir=1;
+// ---------- trading day ----------
+// Track spans 08:00-16:30 IST (480-990 min); markers in the HTML use the same scale.
+const T0=480, T1=990;
+function istNow(){
+  const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',weekday:'short',hourCycle:'h23'})
+    .formatToParts(new Date()).map(x=>[x.type,x.value]));
+  return { h:+p.hour, m:+p.minute, wd:p.weekday };
+}
+const dur = mins => mins>=60 ? `${Math.floor(mins/60)} h ${mins%60} min` : `${mins} min`;
+function renderDay(){
+  const {h,m,wd}=istNow(), t=h*60+m, weekend=(wd==='Sat'||wd==='Sun');
+  $('#clock').textContent=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  let s, sub='';
+  if(weekend) s='Weekend. The market is closed.';
+  else if(t<555){ s=`Pre-market. The market opens at 09:15, in ${dur(555-t)}.`;
+    if(t<510 && sched.provision) sub=`VMs set to deploy start automatically at 08:30.`; }
+  else if(t<930) s=`Market open. It closes at 15:30, in ${dur(930-t)}.`;
+  else if(t<960 && sched.destroy!==false) s=`Market closed. VMs are deleted automatically at 16:00, in ${dur(960-t)}.`;
+  else s='After hours. The market is closed.';
+  if(sched.provision===false && !weekend && t<555) sub='Auto start is paused, so start VMs yourself.';
+  $('#dayStatus').innerHTML=esc(s)+(sub?`<small>${esc(sub)}</small>`:'');
+  const nd=$('#needle'); nd.hidden = weekend || t<T0 || t>T1;
+  nd.style.left=((t-T0)/(T1-T0)*100)+'%';
+  // Markers: dashed + "paused" when the workflow's cron is commented out.
+  $('#mkProv').classList.toggle('paused', sched.provision===false);
+  $('#mkDest').classList.toggle('paused', sched.destroy===false);
+  $('#lblProv').innerHTML='<b>08:30</b>auto start'+(sched.provision===false?' paused':'');
+  $('#lblDest').innerHTML='<b>16:00</b>auto delete'+(sched.destroy===false?' paused':'');
+}
+function buildTrack(){
+  const tr=$('#track');
+  for(let hr=9; hr<=16; hr++){ const d=document.createElement('div'); d.className='hour'; d.style.left=((hr*60-T0)/(T1-T0)*100)+'%'; tr.prepend(d); }
+}
+// Read each workflow file to see whether its schedule is live or commented out.
+async function loadSchedules(){
+  await Promise.all([['provision','provision-vm.yml'],['destroy','destroy-vm.yml']].map(async ([k,f])=>{
+    try{
+      const r=await fetch(`${GH}/contents/.github/workflows/${f}?ref=${BRANCH}`,{headers:H()});
+      if(r.ok) sched[k]=/^[ \t]*-[ \t]*cron:/m.test(b64decode((await r.json()).content));
+    }catch{}
+  }));
+  renderDay();
+}
+
+// ---------- recent runs ----------
+const ago = iso => { const s=Math.max(0,(Date.now()-new Date(iso))/1000); if(s<60) return 'just now';
+  const m=Math.round(s/60); if(m<60) return m+' min ago'; const h=Math.round(m/60); if(h<24) return h+' h ago'; return Math.round(h/24)+' d ago'; };
+function runState(x){
+  if(x.status!=='completed') return x.status==='in_progress' ? ['run','Running'] : ['wait','Queued'];
+  return ({success:['ok','Succeeded'],failure:['bad','Failed'],cancelled:['mut','Cancelled'],skipped:['mut','Skipped']})[x.conclusion] || ['mut',x.conclusion||'Done'];
+}
+async function loadRuns(){
+  clearTimeout(runsTimer);
+  let r; try{ r=await fetch(`${GH}/actions/runs?per_page=4`,{headers:H()}); }catch{ return; }
+  if(!r.ok){ $('#runs').hidden=true; return; }
+  const runs=(await r.json()).workflow_runs||[];
+  $('#runs').hidden=!runs.length;
+  $('#runList').innerHTML=runs.map(x=>{ const [k,t]=runState(x);
+    return `<li><span class="dot d-${k}"></span><span>${esc(x.name)}</span><span class="rs">${t}</span>`+
+      `<span class="rt">${x.event==='schedule'?'Scheduled':'Manual'}, ${ago(x.run_started_at||x.created_at)}</span>`+
+      `<a href="${esc(x.html_url)}" target="_blank" rel="noopener">View</a></li>`; }).join('');
+  // Keep polling while anything is queued or running.
+  if(runs.some(x=>x.status!=='completed')) runsTimer=setTimeout(loadRuns,20000);
+}
+
+// ---------- VM list ----------
 // Sort key per column. Login is numeric; the rest are case-insensitive strings.
 function sortVal(it,col){
   switch(col){
-    case 'enabled': return (it.has('enabled')?!!it.get('enabled'):true)?1:0;
+    case 'enabled': return isOn(it)?1:0;
     case 'login':   return Number(brokerLogin(it))||0;
-    case 'name':    return (fld(it,'name')||'').toLowerCase();
+    case 'name':    return String(fld(it,'name')).toLowerCase();
     case 'server':  return String(brokerServer(it)||'').toLowerCase();
-    case 'kite':    return (fld(it,'env.KITE_USER_ID')||'').toLowerCase();
-    case 'region':  return (it.has('city')&&String(it.get('city')).toLowerCase()==='mumbai')?'mumbai (aws)':(fld(it,'azure.location','centralindia')||'').toLowerCase();
+    case 'kite':    return String(fld(it,'env.KITE_USER_ID')).toLowerCase();
+    case 'region':  return regionLabel(it).toLowerCase();
     default: return '';
   }
 }
 function updateSortIndicators(){
-  document.querySelectorAll('th.srt').forEach(th=>{ const s=th.querySelector('.sarr'); if(s) s.textContent=(th.dataset.sort===sortCol)?(sortDir>0?'▲':'▼'):''; });
+  document.querySelectorAll('.vh button[data-sort]').forEach(b=>{
+    const on=b.dataset.sort===sortCol;
+    b.querySelector('.sarr').textContent = on ? (sortDir>0?'▲':'▼') : '';
+    b.setAttribute('aria-label', b.textContent.replace(/[▲▼]/,'')+(on?(sortDir>0?', sorted ascending':', sorted descending'):', sort'));
+  });
 }
-function wireSort(){
-  document.querySelectorAll('th.srt').forEach(th=>th.addEventListener('click',()=>{
-    const col=th.dataset.sort;
-    if(sortCol===col){ sortDir=-sortDir; } else { sortCol=col; sortDir=1; }
-    render();
-  }));
+function matches(it){
+  const on=isOn(it);
+  if(filterMode==='on' && !on) return false;
+  if(filterMode==='off' && on) return false;
+  if(!filterText) return true;
+  return [fld(it,'name'),brokerLogin(it),brokerServer(it),fld(it,'env.KITE_USER_ID'),regionLabel(it)]
+    .join(' ').toLowerCase().includes(filterText);
+}
+const ICON = {
+  play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/></svg>',
+  stop: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor"/></svg>',
+  more: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.6" fill="currentColor"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><circle cx="13" cy="8" r="1.6" fill="currentColor"/></svg>',
+};
+function rowHtml(it,i){
+  const on=isOn(it), name=fld(it,'name'), nm=esc(name||'Unnamed VM'), b=brokerOf(it), spec=BROKERS[b];
+  const bMain = b==='mt5' ? fld(it,'mt5.server') : (spec ? spec.label : b);
+  const bSub  = b==='mt5' ? '' : (spec&&spec.extra ? fld(it,'env.'+spec.extra.key) : '');
+  // Public IP is automatic: <name>-pip (Azure) / <name>-eip (AWS).
+  const ip = name ? name+(isAws(it)?'-eip':'-pip') : '';
+  return `<div class="cols vr${on?'':' off'}">`+
+    `<div class="c-sw"><input type="checkbox" class="sw" role="switch" data-i="${i}" ${on?'checked':''} aria-label="Deploy ${nm}"></div>`+
+    `<div class="c-name"><button type="button" class="name-btn" data-edit="${i}" title="Edit ${nm}">${nm}</button>${ip?`<span class="sub">IP ${esc(ip)}</span>`:''}</div>`+
+    `<div class="meta">`+
+      `<div class="c-broker"><span>${esc(bMain)}</span>${bSub?`<span class="sub">${esc(bSub)}</span>`:''}</div>`+
+      `<div class="num" data-label="Login">${esc(brokerLogin(it))}</div>`+
+      `<div data-label="Kite">${esc(fld(it,'env.KITE_USER_ID'))}</div>`+
+      `<div>${esc(regionLabel(it))}</div>`+
+    `</div>`+
+    `<div class="c-acts">`+
+      `<button type="button" class="btn btn-sm btn-go-o" data-start="${i}" title="Provision this VM now">${ICON.play}Start</button>`+
+      `<button type="button" class="btn btn-sm btn-stop-o" data-destroy="${i}" title="Delete the running VM. It stays on this list.">${ICON.stop}Delete</button>`+
+      `<button type="button" class="btn btn-sm btn-icon" data-more="${i}" aria-label="More actions for ${nm}" aria-haspopup="menu">${ICON.more}</button>`+
+    `</div></div>`;
 }
 function render(){
-  const tb=$('#vmRows'); tb.innerHTML='';
-  // Sort the DISPLAY order only; row indices below still point at vmsNode.items.
-  let order=vmsNode.items.map((_,i)=>i);
-  if(sortCol) order.sort((a,b)=>{ const va=sortVal(vmsNode.items[a],sortCol), vb=sortVal(vmsNode.items[b],sortCol); return (va<vb?-1:va>vb?1:0)*sortDir; });
-  order.forEach(i=>{
-    const it=vmsNode.items[i];
-    const on = it.has('enabled') ? !!it.get('enabled') : true;
-    const tr=document.createElement('tr'); if(!on) tr.className='off';
-    const isMumbaiAws = it.has('city') && String(it.get('city')).toLowerCase()==='mumbai';
-    const region = isMumbaiAws ? 'Mumbai (AWS)' : fld(it,'azure.location','centralindia');
-    tr.innerHTML=`<td class="c"><input type="checkbox" data-i="${i}" ${on?'checked':''}></td>`+
-      `<td>${esc(fld(it,'name'))}</td><td>${esc(brokerLogin(it))}</td>`+
-      `<td>${esc(brokerServer(it))}</td><td>${esc(fld(it,'env.KITE_USER_ID'))}</td>`+
-      `<td>${esc(fld(it,'name') + (isMumbaiAws ? '-eip' : '-pip'))}</td>`+
-      `<td>${esc(region)}</td>`+
-      `<td><div class="acts"><button type="button" class="go" data-start="${i}" title="Provision this VM now">▶ Start</button>`+
-      `<button type="button" class="danger" data-destroy="${i}" title="Deprovision (tear down) this VM now">■ Delete</button>`+
-      `<button type="button" data-edit="${i}">Edit</button>`+
-      `<button type="button" class="danger" data-del="${i}" title="Deprovision this VM and remove it from config.yaml">Remove</button></div></td>`;
-    tb.appendChild(tr);
-  });
-  tb.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
-    cb.closest('tr').classList.toggle('off',!cb.checked); markDirty(true);
-  }));
-  tb.querySelectorAll('button[data-start]').forEach(b=>b.addEventListener('click',()=>startVm(+b.dataset.start)));
-  tb.querySelectorAll('button[data-destroy]').forEach(b=>b.addEventListener('click',()=>destroyVm(+b.dataset.destroy)));
-  tb.querySelectorAll('button[data-edit]').forEach(b=>b.addEventListener('click',()=>editVm(+b.dataset.edit)));
-  tb.querySelectorAll('button[data-del]').forEach(b=>b.addEventListener('click',()=>deleteVm(+b.dataset.del)));
-  updateSortIndicators();
+  const items=vmsNode.items;
+  // Sort the DISPLAY order only; data-i indices still point at vmsNode.items.
+  let order=items.map((_,i)=>i);
+  if(sortCol) order.sort((a,b)=>{ const va=sortVal(items[a],sortCol), vb=sortVal(items[b],sortCol); return (va<vb?-1:va>vb?1:0)*sortDir; });
+  const shown=order.filter(i=>matches(items[i]));
+  $('#vmRows').innerHTML =
+      !items.length ? `<div class="empty"><p>No VMs yet. Add the first one to start building the fleet.</p><button type="button" class="btn btn-go" data-add>Add VM</button></div>`
+    : !shown.length ? `<div class="empty"><p>No VMs match this search or filter.</p><button type="button" class="btn" data-clear>Show all VMs</button></div>`
+    : shown.map(i=>rowHtml(items[i],i)).join('');
+  updateSortIndicators(); renderCounts();
+}
+// Counts, fleet buttons and Kite usage: refreshed on every deploy toggle without
+// re-rendering the list (so a row doesn't vanish under the cursor while filtered).
+function renderCounts(){
+  const items=vmsNode.items, on=items.filter(isOn).length, named=items.filter(it=>fld(it,'name')).length;
+  $('#fleetCount').textContent=`${on} of ${plural(items.length,'VM')} set to deploy`;
+  $('#runProvision').innerHTML=`${ICON.play}Start ${plural(on,'VM')}`; $('#runProvision').disabled=!on;
+  $('#runDestroy').innerHTML=`${ICON.stop}Delete all ${named}`; $('#runDestroy').disabled=!named;
   renderKiteSummary();
 }
-
-// Kite ID usage: distinct count + per-ID enabled/total VM counts. A Kite login can
+// Kite ID usage: distinct count + per-ID deploying/total VM counts. A Kite login can
 // only carry so many concurrent VMs, so this shows how loaded each one is.
 function renderKiteSummary(){
-  const el=$('#kiteSummary'); if(!el) return;
   const kite={};
   vmsNode.items.forEach(it=>{
-    const k=(fld(it,'env.KITE_USER_ID')||'(none)');
-    const on=it.has('enabled')?!!it.get('enabled'):true;
-    (kite[k]=kite[k]||{t:0,e:0}).t++; if(on) kite[k].e++;
+    const k=fld(it,'env.KITE_USER_ID')||'No Kite ID';
+    (kite[k]=kite[k]||{t:0,e:0}).t++; if(isOn(it)) kite[k].e++;
   });
   const ids=Object.keys(kite).sort();
-  const chips=ids.map(k=>{
-    const v=kite[k], lbl=(v.e===v.t)?String(v.t):(v.e+'/'+v.t);
-    return `<span style="display:inline-block;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:2px 9px;margin:3px 5px 0 0">${esc(k)} <b>${lbl}</b></span>`;
-  }).join('');
-  el.innerHTML=`<b>${ids.length}</b> Kite ID${ids.length===1?'':'s'} in use across ${vmsNode.items.length} VMs `+
-    `<span class="mut">(enabled / total per ID)</span><div style="margin-top:4px">${chips||'<span class="mut">none</span>'}</div>`;
+  $('#kiteLead').textContent = ids.length ? `${plural(ids.length,'Kite ID')} in use. Each shows VMs set to deploy, out of all VMs using it.` : 'No VMs yet.';
+  $('#kiteSummary').innerHTML=ids.map(k=>`<span class="chip"><b>${esc(k)}</b><span class="num">${kite[k].e} of ${kite[k].t}</span></span>`).join('');
 }
 
-function syncEnabled(){
-  document.querySelectorAll('#vmRows input[type=checkbox]').forEach(cb=>{
-    vmsNode.items[+cb.dataset.i].set('enabled', cb.checked);
-  });
-}
-
+// ---------- save ----------
 // Commit the in-memory config.yaml. Resolves true on success, false on any
 // failure (already logged) so callers like dispatch() can stop before running a
 // workflow against a stale config.
 async function save(){
   if(!doc) return false;
-  syncEnabled();
-  log('Saving …');
+  log('Saving config.yaml…');
   const body={message:'dashboard: update fleet deploy/config',content:b64encode(doc.toString()),sha,branch:BRANCH};
   let r; try{ r=await fetch(API,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)}); }
-  catch(e){ log('Network error: '+e.message,'err'); return false; }
-  if(r.status===409){ log('Conflict (409): file changed on GitHub. Click Reload, then redo.','err'); return false; }
-  if(!r.ok){ log('Save failed '+r.status+': '+esc(await r.text()),'err'); return false; }
+  catch(e){ log('Could not reach GitHub ('+esc(e.message)+'). Your changes are still here; try Save changes again.','err'); return false; }
+  if(r.status===409){ log('Someone else changed config.yaml on GitHub. Click Reload to get the latest version, then redo your change.','err'); return false; }
+  if(!r.ok){ log('Saving failed ('+r.status+'): '+esc(await r.text()),'err'); return false; }
   const j=await r.json(); sha=j.content.sha; lastCommit=j.commit.sha.slice(0,7); markDirty(false);
-  log('Saved · commit '+lastCommit+' · the next 08:30 IST run will use it.','ok');
+  log(`Saved config.yaml (commit ${lastCommit}).`,'ok');
   return true;
 }
 
@@ -470,151 +859,246 @@ function applyFields(item, f){
   else if(item.has('autoShutdown')) item.delete('autoShutdown');
 }
 
+// ---------- add / edit panel ----------
+function resetForm(){
+  const f=$('#addForm'); f.reset(); f.editIndex.value='';   // f.reset() restores Region + Order broker to their first options
+  delete f.bserver.dataset.autofill;
+  f.vmname.setCustomValidity('');
+  updateBrokerFields();
+  $('#edTitle').textContent='Add a VM';
+  $('#formSubmit').textContent='Add and save';
+  $('#edHint').textContent='The new VM is saved to config.yaml right away.';
+}
+function openEditor(i){
+  resetForm();
+  const f=$('#addForm');
+  if(i!=null){
+    const it=vmsNode.items[i];
+    f.vmname.value=fld(it,'name');
+    const b=brokerOf(it), spec=BROKERS[b];
+    // Unknown ORDER_BROKER (not in BROKERS yet): the form opens in MT5 mode, and
+    // submitting is an explicit convert-to-MT5 (validation forces the MT5 creds
+    // to be typed first, so it can't happen by accident).
+    f.broker.value = (spec && b!=='mt5') ? b : 'mt5';
+    f.login.value=fld(it,'mt5.login');
+    f.password.value=fld(it,'mt5.password');
+    f.server.value=fld(it,'mt5.server');
+    if(spec && b!=='mt5'){
+      f.buser.value=fld(it,'env.'+spec.user);
+      f.bpass.value=fld(it,'env.'+spec.pass);
+      if(spec.extra){ f.bserver.value=fld(it,'env.'+spec.extra.key); delete f.bserver.dataset.autofill; }
+      f.blots.value = spec.lots ? fld(it,'env.'+spec.lots.key) : '';
+      f.bmaxlots.value = spec.maxLots ? fld(it,'env.'+spec.maxLots.key) : '';
+    }
+    updateBrokerFields();
+    f.kite.value=fld(it,'env.KITE_USER_ID');
+    f.branch.value=fld(it,'app.branch');
+    f.region.value=regionKey(it);
+    f.editIndex.value=String(i);
+    $('#edTitle').textContent='Edit '+(fld(it,'name')||'VM');
+    $('#formSubmit').textContent='Update VM';
+    $('#edHint').textContent='Saved to config.yaml when you click Save changes.';
+  }
+  $('#editor').showModal();
+  f.vmname.focus();
+}
 // A new VM is committed straight away (no separate Save click); an Edit stays
 // pending until Save changes, so several tweaks can go in one commit.
 async function submitForm(e){
   e.preventDefault(); const f=e.target;
   const name=f.vmname.value.trim(); if(!name) return;
-  syncEnabled();                                      // keep unsaved deploy toggles
   const idx=f.editIndex.value, isNew=(idx==='');
+  // VM names address the cloud resources, so they must be unique.
+  if(vmsNode.items.some((it,j)=>String(fld(it,'name')).toLowerCase()===name.toLowerCase() && String(j)!==idx)){
+    f.vmname.setCustomValidity('A VM with this name already exists.'); f.vmname.reportValidity(); return;
+  }
   if(isNew){ const item=doc.createNode({}); item.set('enabled',true); applyFields(item,f); vmsNode.add(item); }
   else applyFields(vmsNode.items[+idx],f);
-  render(); resetForm(); $('#addPanel').open=false; markDirty(true);
-  if(!isNew) return log('Updated '+esc(name)+' — click Save changes to commit.','ok');
-  if(await save()) log('Added and saved '+esc(name)+' · commit '+lastCommit+'.','ok');
+  $('#editor').close(); render(); markDirty(true);
+  if(!isNew) return log(`Updated ${esc(name)}. Click Save changes to save it.`,'ok');
+  if(await save()) log(`Added ${esc(name)} and saved it (commit ${lastCommit}).`,'ok');
 }
 
-function editVm(i){
-  const it=vmsNode.items[i], f=$('#addForm');
-  f.vmname.value=fld(it,'name');
-  const b=brokerOf(it), spec=BROKERS[b];
-  // Unknown ORDER_BROKER (not in BROKERS yet): the form opens in MT5 mode, and
-  // submitting is an explicit convert-to-MT5 (validation forces the MT5 creds
-  // to be typed first, so it can't happen by accident).
-  f.broker.value = (spec && b!=='mt5') ? b : 'mt5';
-  f.login.value=fld(it,'mt5.login');
-  f.password.value=fld(it,'mt5.password');
-  f.server.value=fld(it,'mt5.server');
-  if(spec && b!=='mt5'){
-    f.buser.value=fld(it,'env.'+spec.user);
-    f.bpass.value=fld(it,'env.'+spec.pass);
-    if(spec.extra){ f.bserver.value=fld(it,'env.'+spec.extra.key); delete f.bserver.dataset.autofill; }
-    f.blots.value = spec.lots ? fld(it,'env.'+spec.lots.key) : '';
-    f.bmaxlots.value = spec.maxLots ? fld(it,'env.'+spec.maxLots.key) : '';
-  } else { f.buser.value=''; f.bpass.value=''; f.bserver.value=''; f.blots.value=''; f.bmaxlots.value=''; delete f.bserver.dataset.autofill; }
-  updateBrokerFields();
-  f.kite.value=fld(it,'env.KITE_USER_ID');
-  f.branch.value=fld(it,'app.branch');
-  f.region.value=(it.has('city') && String(it.get('city')).toLowerCase()==='mumbai') ? 'mumbai-aws' : fld(it,'azure.location','centralindia');
-  f.editIndex.value=String(i);
-  $('#formSubmit').textContent='Update VM';
-  $('#cancelEdit').hidden=false;
-  $('#formSummary').textContent='Editing '+fld(it,'name');
-  $('#addPanel').open=true;
-  f.scrollIntoView({behavior:'smooth',block:'center'});
+// ---------- confirm dialog ----------
+function ask({title, body, ok, tone='go'}){
+  const d=$('#askDlg'), okb=$('#askOk');
+  $('#askTitle').textContent=title; $('#askBody').innerHTML=body;
+  okb.textContent=ok; okb.className='btn '+(tone==='stop'?'btn-stop':'btn-go');
+  d.returnValue=''; d.showModal();
+  (tone==='stop' ? $('#askCancel') : okb).focus();   // destructive: default to Cancel
+  return new Promise(res=>d.addEventListener('close',()=>res(d.returnValue==='ok'),{once:true}));
 }
+const dryP = () => $('#dryrun').checked ? '<p class="note-pre">Dry run is on, so the workflow only prints what it would do.</p>' : '';
+const savedP = () => dirty ? '<p>Your unsaved changes are saved first.</p>' : '';
 
+// ---------- workflows ----------
+// Trigger a GitHub Actions workflow (workflow_dispatch). Needs the token's
+// Actions:write scope. Unsaved edits are committed first: the workflow checks out
+// main, so it must see the same config.yaml the operator is looking at. A failed
+// save aborts. Callers confirm with ask() before calling. Resolves true only
+// when the workflow was actually triggered.
+async function dispatch(workflow, inputs, what){
+  if(!tok()){ log('Connect a token first.','err'); return false; }
+  if(inputs.dry_run==='true') what+=' (dry run)';
+  if(dirty && !(await save())){
+    $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(what)} did not start because config.yaml couldn't be saved.</span>`);
+    return false;
+  }
+  log(`Asking GitHub to start: ${esc(what)}…`);
+  const url=`${GH}/actions/workflows/${workflow}/dispatches`;
+  let r; try{ r=await fetch(url,{method:'POST',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify({ref:BRANCH,inputs})}); }
+  catch(e){ log('Could not reach GitHub ('+esc(e.message)+').','err'); return false; }
+  if(r.status===204){ log(`${esc(what)} has started. ${runsLink}`,'ok'); setTimeout(loadRuns,4000); return true; }
+  if(r.status===403) log('GitHub refused (403). This token needs <b>Actions: Read and write</b>. Create a new token with it and reconnect.','err');
+  else if(r.status===404) log('Workflow not found (404), or this token has no Actions access.','err');
+  else log(`GitHub rejected the request (${r.status}): `+esc(await r.text()),'err');
+  return false;
+}
+// Both workflows take `only` (one VM name); blank = the whole fleet.
+function wfInputs(only){ const inputs={dry_run:String($('#dryrun').checked)}; if(only) inputs.only=only; return inputs; }
+
+// Fleet-wide Start: every VM set to deploy.
+async function startAll(){
+  const n=vmsNode.items.filter(isOn).length;
+  if(!await ask({title:`Start ${plural(n,'VM')}?`, ok:'Start VMs',
+    body:`<p>Provisions every VM that is set to deploy.</p>${savedP()}${dryP()}`})) return;
+  dispatch('provision-vm.yml',wfInputs(''),`Provisioning ${plural(n,'VM')}`);
+}
+// Fleet-wide Delete: every named VM in config.yaml, deploying or not.
+async function destroyAll(){
+  const n=vmsNode.items.filter(it=>fld(it,'name')).length;
+  if(!await ask({title:`Delete all ${plural(n,'VM')}?`, ok:'Delete all', tone:'stop',
+    body:`<p>Deletes the running VM, its disk and network card for every VM in config.yaml. Public IPs are kept for next time, and the list itself doesn't change.</p>${savedP()}${dryP()}`})) return;
+  dispatch('destroy-vm.yml',wfInputs(''),'Deleting all VMs');
+}
+// Per-row Start: provision just this VM. The provisioner skips enabled:false
+// entries even when named via `only`, so a VM with Deploy off gets it turned on
+// first (saved along with any other pending edits by dispatch()).
+async function startVm(i){
+  const it=vmsNode.items[i], name=fld(it,'name');
+  if(!name) return log('This VM has no name. Edit it and add one first.','err');
+  const on=isOn(it);
+  if(!await ask({title:`Start ${name}?`, ok:'Start VM',
+    body:`<p>Provisions ${esc(name)} now.</p>`+
+      (on?'':`<p>Deploy is off for this VM. It will be turned on and saved first, because the provisioner skips VMs that aren't set to deploy.</p>`)+
+      savedP()+dryP()})) return;
+  if(!on){ it.set('enabled',true); render(); markDirty(true); }
+  dispatch('provision-vm.yml',wfInputs(name),`Provisioning ${name}`);
+}
+// Per-row Delete: tear down just this VM's cloud resources (VM + disk + NIC;
+// the public IP is kept). The config.yaml entry stays — Remove drops it too.
+async function destroyVm(i){
+  const name=fld(vmsNode.items[i],'name');
+  if(!name) return log('This VM has no name. Edit it and add one first.','err');
+  if(!await ask({title:`Delete ${name}?`, ok:'Delete VM', tone:'stop',
+    body:`<p>Deletes the running VM, its disk and network card. The public IP is kept for next time, and ${esc(name)} stays on this list.</p>${savedP()}${dryP()}`})) return;
+  dispatch('destroy-vm.yml',wfInputs(name),`Deleting ${name}`);
+}
 // Remove a VM for good: tear down its cloud VM (destroy workflow, a no-op if it's
 // already gone), then drop the entry from config.yaml and commit. Order matters:
 // a dispatched run checks out the commit main was at when triggered, so the
 // destroy still sees this entry (its city -> Azure/AWS routing) even though the
 // removal is committed a moment later. Its now-detached public IP is left for the
-// next scheduled destroy's orphan prune. Resets the edit form since splicing
-// shifts the indices the form's editIndex points at.
+// next scheduled destroy's orphan prune.
 async function deleteVm(i){
-  const it=vmsNode.items[i], name=fld(it,'name');
-  const dry=$('#dryrun').checked;
-  if(!confirm(`Remove "${name || 'VM #'+(i+1)}"?\n\n`+
-    (name ? `1. Deprovisions the cloud VM, its disk and NIC (nothing happens if it's already gone).\n2. Removes the entry from config.yaml and saves.` : `This VM has no name, so there is no cloud VM to deprovision — the entry is just removed from config.yaml and saved.`)+
-    (dry ? `\n\nDry run is ticked: the deprovision is a dry run and the entry is kept.` : ''))) return;
-  if(name && !(await dispatch('destroy-vm.yml',wfInputs(name),'Destroy '+name,false))){
-    $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(name)} was not removed from config.yaml.</span>`);
+  const it=vmsNode.items[i], name=fld(it,'name'), dry=$('#dryrun').checked;
+  if(!await ask({title:`Remove ${name||'this VM'}?`, ok:'Remove VM', tone:'stop',
+    body: name
+      ? `<ul><li>Deletes the running VM, its disk and network card. Nothing happens if it's already gone.</li><li>Takes ${esc(name)} off config.yaml and saves.</li></ul>`
+      : `<p>This VM has no name, so there's no cloud VM to delete. It is taken off config.yaml and saved.</p>`
+    + (dry ? `<p class="note-pre">Dry run is on: the delete only prints what it would do, and ${esc(name||'the VM')} stays on the list.</p>` : '')})) return;
+  if(name && !(await dispatch('destroy-vm.yml',wfInputs(name),`Deleting ${name}`))){
+    $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(name)} is still on the list.</span>`);
     return;
   }
   if(dry) return;
-  syncEnabled();                                      // keep unsaved deploy toggles
   const idx=vmsNode.items.indexOf(it); if(idx<0) return;
   vmsNode.items.splice(idx,1);
-  render(); resetForm(); $('#addPanel').open=false; markDirty(true);
-  if(await save()) log((name?'Deprovision triggered and removed ':'Removed ')+esc(name||'unnamed VM')+' from config.yaml · commit '+lastCommit+
-    ` — <a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">view run →</a>`,'ok');
+  render(); markDirty(true);
+  if(await save()) log(`${name?`Deleting ${esc(name)} has started, and it`:'The VM'} was removed from config.yaml (commit ${lastCommit}). ${name?runsLink:''}`,'ok');
 }
 
-function resetForm(){
-  const f=$('#addForm'); f.reset(); f.editIndex.value='';   // f.reset() restores Region + Order broker to their first options
-  delete f.bserver.dataset.autofill;
-  updateBrokerFields();
-  $('#formSubmit').textContent='Add to list';
-  $('#cancelEdit').hidden=true;
-  $('#formSummary').textContent='+ Add a VM';
+// ---------- row menu ----------
+let menuFor=null, menuClosedAt=0;
+function openMenu(btn,i){
+  const m=$('#rowMenu');
+  // A click on the same ⋯ that light-dismissed the menu should just close it.
+  if(menuFor===i && Date.now()-menuClosedAt<250) return;
+  menuFor=i; m.showPopover();
+  const r=btn.getBoundingClientRect(), mw=m.offsetWidth, mh=m.offsetHeight;
+  let top=r.bottom+6; if(top+mh>innerHeight-8) top=r.top-mh-6;
+  m.style.top=top+'px'; m.style.left=Math.max(8,Math.min(r.right-mw,innerWidth-mw-8))+'px';
+  m.querySelector('button').focus();
 }
+$('#rowMenu').addEventListener('toggle',e=>{ if(e.newState==='closed') menuClosedAt=Date.now(); });
+$('#rowMenu').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-act]'); if(!b) return;
+  $('#rowMenu').hidePopover();
+  if(b.dataset.act==='edit') openEditor(menuFor); else deleteVm(menuFor);
+});
 
-$('#saveTok').onclick=()=>{ const v=$('#tok').value.trim(); if(!v) return; localStorage.setItem('ghpat',v); $('#tok').value=''; refreshTokUI(); load(); };
-$('#forget').onclick=()=>{ localStorage.removeItem('ghpat'); $('#app').hidden=true; refreshTokUI(); log('Token forgotten.'); };
-$('#reload').onclick=load;
+// ---------- wiring ----------
+$('#vmRows').addEventListener('change',e=>{
+  const cb=e.target.closest('input.sw'); if(!cb) return;
+  vmsNode.items[+cb.dataset.i].set('enabled',cb.checked);
+  cb.closest('.vr').classList.toggle('off',!cb.checked);
+  markDirty(true); renderCounts();
+});
+$('#vmRows').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const d=b.dataset;
+  if(d.start) startVm(+d.start);
+  else if(d.destroy) destroyVm(+d.destroy);
+  else if(d.edit) openEditor(+d.edit);
+  else if(d.more) openMenu(b,+d.more);
+  else if('add' in d) openEditor(null);
+  else if('clear' in d){ $('#q').value=''; filterText=''; setFilter('all'); }
+});
+document.querySelectorAll('.vh button[data-sort]').forEach(b=>b.addEventListener('click',()=>{
+  const col=b.dataset.sort;
+  if(sortCol===col) sortDir=-sortDir; else { sortCol=col; sortDir=1; }
+  render();
+}));
+function setFilter(mode){
+  filterMode=mode;
+  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.f===mode)));
+  render();
+}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>setFilter(b.dataset.f)));
+$('#q').addEventListener('input',e=>{ filterText=e.target.value.trim().toLowerCase(); render(); });
+
+$('#tokForm').addEventListener('submit',e=>{ e.preventDefault(); const v=$('#tok').value.trim(); if(!v) return;
+  localStorage.setItem('ghpat',v); $('#tok').value=''; tokenBad=''; refreshTokUI(); load(); });
+$('#forget').onclick=async()=>{
+  if(dirty && !await ask({title:'Disconnect and discard changes?', ok:'Disconnect', tone:'stop', body:'<p>You have unsaved changes. Disconnecting throws them away.</p>'})) return;
+  localStorage.removeItem('ghpat'); tokenBad=''; markDirty(false); refreshTokUI(); log('Disconnected. The token was removed from this browser.');
+};
+$('#reload').onclick=async()=>{
+  if(dirty && !await ask({title:'Reload and discard changes?', ok:'Reload', tone:'stop', body:'<p>Reloading gets the latest config.yaml from GitHub and throws away your unsaved changes.</p>'})) return;
+  load();
+};
+$('#discard').onclick=async()=>{
+  if(await ask({title:'Discard unsaved changes?', ok:'Discard', tone:'stop', body:'<p>Your changes are thrown away and the list goes back to the saved config.yaml.</p>'})) load();
+};
 $('#save').onclick=save;
+$('#addBtn').onclick=()=>openEditor(null);
 $('#addForm').addEventListener('submit',submitForm);
-$('#cancelEdit').addEventListener('click',resetForm);
+$('#addForm').vmname.addEventListener('input',e=>e.target.setCustomValidity(''));
+$('#cancelEdit').onclick=()=>$('#editor').close();
+$('#edClose').onclick=()=>$('#editor').close();
+$('#runProvision').onclick=startAll;
+$('#runDestroy').onclick=destroyAll;
+$('#dryrun').addEventListener('change',e=>{ document.body.classList.toggle('is-dry',e.target.checked); $('#dryNote').hidden=!e.target.checked; });
 // Order-broker dropdown: options come from the BROKERS registry; changing it
 // swaps which credential fields are visible/required.
 for(const [k,s] of Object.entries(BROKERS)) $('#brokerSel').add(new Option(s.label,k));
 $('#brokerSel').addEventListener('change',updateBrokerFields);
 updateBrokerFields();
 
-// Trigger a GitHub Actions workflow (workflow_dispatch) so the operator can run
-// provision/destroy without opening GitHub. Needs the token's Actions:write scope.
-// Unsaved edits are committed first: the workflow checks out main, so it must
-// see the same config.yaml the operator is looking at. A failed save aborts.
-// `ask` overrides the confirm text; pass false when the caller already confirmed.
-// Resolves true only when the workflow was actually triggered.
-async function dispatch(workflow, inputs, label, ask){
-  if(!tok()){ log('Set a token first.','err'); return false; }
-  if(inputs.dry_run==='true') label+=' (dry run)';
-  if(ask!==false && !confirm(ask || `Run the "${label}" workflow now on ${BRANCH}?`)) return false;
-  if(dirty && !(await save())){
-    $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(label)} not triggered — config could not be saved.</span>`);
-    return false;
-  }
-  log(`Triggering ${label} …`);
-  const url=`https://api.github.com/repos/${REPO}/actions/workflows/${workflow}/dispatches`;
-  let r; try{ r=await fetch(url,{method:'POST',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify({ref:BRANCH,inputs})}); }
-  catch(e){ log('Network error: '+e.message,'err'); return false; }
-  if(r.status===204){ log(`${label} triggered ✓ — <a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">view run →</a>`,'ok'); return true; }
-  if(r.status===403) log('403 — the token lacks Actions permission. Regenerate it with <b>Actions: Read and write</b> (see token setup).','err');
-  else if(r.status===404) log('404 — workflow not found or the token has no Actions access.','err');
-  else log(`Trigger failed ${r.status}: `+esc(await r.text()),'err');
-  return false;
-}
-// Both workflows take `only` (one VM name); blank = the whole fleet.
-function wfInputs(only){ const inputs={dry_run:String($('#dryrun').checked)}; if(only) inputs.only=only; return inputs; }
-$('#runProvision').onclick=()=>{ const only=$('#onlyVm').value.trim(); dispatch('provision-vm.yml',wfInputs(only),only?'Provision '+only:'Provision'); };
-$('#runDestroy').onclick=()=>{ const only=$('#onlyVm').value.trim(); dispatch('destroy-vm.yml',wfInputs(only),only?'Destroy '+only:'Destroy'); };
-
-// Per-row ▶ Start: provision just this VM. The provisioner skips enabled:false
-// entries even when named via `only`, so an unchecked VM gets its Deploy box
-// ticked first (saved along with any other pending edits by dispatch()).
-function startVm(i){
-  const name=fld(vmsNode.items[i],'name'); if(!name) return log('This VM has no name — Edit it first.','err');
-  const cb=document.querySelector(`#vmRows input[data-i="${i}"]`);
-  let ask=`Provision "${name}" now?`;
-  if(!cb.checked) ask+=`\n\nIts Deploy box is unchecked and the provisioner skips disabled VMs, so Deploy will be turned on (and saved) first.`;
-  else if(dirty) ask+=`\n\nUnsaved changes will be saved first.`;
-  if(!confirm(ask)) return;
-  if(!cb.checked){ cb.checked=true; cb.closest('tr').classList.remove('off'); markDirty(true); }
-  dispatch('provision-vm.yml',wfInputs(name),'Provision '+name,false);
-}
-// Per-row ■ Delete: tear down just this VM's cloud resources (VM + disk + NIC;
-// the public IP is kept). The config.yaml entry stays — Remove drops it too.
-function destroyVm(i){
-  const name=fld(vmsNode.items[i],'name'); if(!name) return log('This VM has no name — Edit it first.','err');
-  dispatch('destroy-vm.yml',wfInputs(name),'Destroy '+name,
-    `Deprovision "${name}" now?\n\nDeletes the running VM, its disk and NIC (its public IP is kept for reuse). The entry stays in config.yaml.`+
-    (dirty?`\n\nUnsaved changes will be saved first.`:''));
-}
-
 window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
 
-wireSort(); refreshTokUI(); load();
+buildTrack(); renderDay(); setInterval(renderDay,30000);
+refreshTokUI(); load();
 </script>
 </body>
 </html>

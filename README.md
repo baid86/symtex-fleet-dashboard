@@ -4,24 +4,31 @@ A static, single-page dashboard (no backend, no secrets) for non-coders to manag
 trading-VM fleet defined in the **private** repo
 [`baid86/symtex-cin-trading-vm`](https://github.com/baid86/symtex-cin-trading-vm).
 
-It lets you:
-- **Check / uncheck** which VMs deploy at the scheduled 08:30 IST provision run (toggles a per-VM
-  `enabled` flag in `config.yaml`).
-- **Add** a new VM via a form — it is committed to `config.yaml` straight away. **Edit** an existing
-  one (edits stay pending until **Save changes**, so several can go in one commit).
-- Per VM row:
-  - **▶ Start** — provision just that VM now. If its Deploy box is unchecked it is ticked first
-    (the provisioner skips `enabled: false` VMs).
+## Layout
+- **Trading-day strip** (top): the current IST time, what the market is doing, and a 08:00–16:30
+  bar marking 08:30 auto start, 09:15 open, 15:30 close and 16:00 auto delete. Each auto marker
+  shows *paused* when that workflow's `schedule:` cron is commented out (read live from the
+  workflow file). The strip also holds the fleet-wide **Start N VMs** (every VM set to deploy) and
+  **Delete all N** buttons, plus the last few workflow runs with their status, refreshed every 20 s
+  while one is queued or running.
+- **VMs** list: search, an All / Deploying / Off filter, and sortable columns. Each row has:
+  - a **Deploy** switch (the per-VM `enabled` flag in `config.yaml`; off = skipped by provisioning);
+  - **▶ Start** — provision just that VM now. If Deploy is off it is turned on first (the
+    provisioner skips `enabled: false` VMs);
   - **■ Delete** — deprovision just that VM now: deletes the cloud VM, disk and NIC, keeps its public
-    IP for reuse. The `config.yaml` entry stays.
-  - **Remove** — deprovision the VM (a no-op if it's already gone) **and** delete its entry from
-    `config.yaml`. The destroy run is triggered first, so it still sees the entry's region routing.
-- **Run the provision / destroy workflows** for the whole fleet (or one VM named in *Only this VM*)
-  on demand via the GitHub Actions API — no need to open the Actions tab.
+    IP for reuse. The `config.yaml` entry stays;
+  - **⋯** menu with **Edit** and **Remove** — Remove deprovisions the VM (a no-op if it's already
+    gone) **and** deletes its entry from `config.yaml`. The destroy run is triggered first, so it
+    still sees the entry's region routing.
+- **Add VM** / **Edit** open a side panel. A new VM is committed to `config.yaml` straight away;
+  edits stay pending until **Save changes**, so several can go in one commit. VM names must be unique.
+- **Kite IDs**: how many VMs use each Kite login (set to deploy, out of total).
+- **Bottom bar**: the latest message, plus **Unsaved changes**, **Discard** and **Save changes**.
 
-Every provision / deprovision first saves any unsaved changes, so the workflow runs against the
-config you see; if that save fails (e.g. a 409 conflict) the workflow is not triggered. The **dry run**
-box applies to all of these (a dry-run Remove keeps the entry).
+Every Start / Delete / Remove first saves any unsaved changes, so the workflow runs against the
+config you see; if that save fails (e.g. a 409 conflict) the workflow is not triggered. The **Dry
+run** switch in the header applies to all of these (a dry-run Remove keeps the entry). Every action
+is confirmed in a dialog that says exactly what will happen; destructive ones default to Cancel.
 
 Per-VM deprovision needs the `only` input on `destroy-vm.yml` in the fleet repo (maps to
 `Remove-TradingVm.ps1 -Name`).
