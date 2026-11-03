@@ -11,7 +11,13 @@ trading-VM fleet defined in the **private** repo
   workflow file). The strip also holds the fleet-wide **Start N VMs** (every VM set to deploy) and
   **Delete all N** buttons, plus the last few workflow runs with their status, refreshed every 20 s
   while one is queued or running.
-- **VMs** list: search, an All / Deploying / Off filter, and sortable columns. Each row has:
+- **VMs** list: search, an All / Deploying / Off filter, and sortable columns. Under each name is the
+  VM's **live status**: Running (with its public IP), Starting…, Deleting…, Queued to start/delete,
+  Stopped, *Stopped, still billed* (Azure shut it down without deallocating), Deleted, Failed or Unknown.
+  It comes from `status.json` on the fleet repo's `fleet-status` branch, which every provision/destroy
+  run refreshes as its last step. **Refresh status** runs a check on demand (about a minute).
+  Queued/running workflow runs override it for the VMs they target, so a Start shows *Starting…* at
+  once. The summary under the title counts running VMs and says how old the last check is. Each row has:
   - a **Deploy** switch (the per-VM `enabled` flag in `config.yaml`; off = skipped by provisioning);
   - **▶ Start** — provision just that VM now. If Deploy is off it is turned on first (the
     provisioner skips `enabled: false` VMs);
@@ -29,6 +35,14 @@ Every Start / Delete / Remove first saves any unsaved changes, so the workflow r
 config you see; if that save fails (e.g. a 409 conflict) the workflow is not triggered. The **Dry
 run** switch in the header applies to all of these (a dry-run Remove keeps the entry). Every action
 is confirmed in a dialog that says exactly what will happen; destructive ones default to Cancel.
+
+**Conflicts are handled for you.** Saves run one at a time, and `config.yaml` is always fetched fresh
+(never from the browser cache). If it changed on GitHub since you loaded it (another tab, device or
+person saved), the save fetches the latest version, re-applies your pending changes on top and
+retries. Every change (deploy switch, add, edit, remove) is recorded so it can be replayed. Only a
+change that no longer makes sense stops the save, such as editing a VM someone else removed or adding
+a name someone else took. Then you're told what clashed and asked to Reload. Coming back to the tab
+also quietly picks up changes made elsewhere when you have nothing unsaved.
 
 Per-VM deprovision needs the `only` input on `destroy-vm.yml` in the fleet repo (maps to
 `Remove-TradingVm.ps1 -Name`).

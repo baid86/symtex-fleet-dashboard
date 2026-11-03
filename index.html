@@ -161,13 +161,23 @@
   .vr { min-height:62px; padding-top:9px; padding-bottom:9px; border-bottom:1px solid var(--line); }
   .vr:last-child { border-bottom:0; }
   .vr .meta { display:contents; }
-  .vr.off .c-name, .vr.off .meta > div { opacity:.5; }
+  /* Deploy off dims the entry, but never its live status: an "off" VM can still be running. */
+  .vr.off .name-btn, .vr.off .meta > div { opacity:.5; }
   .c-name, .c-broker { min-width:0; display:flex; flex-direction:column; }
   .name-btn { all:unset; cursor:pointer; font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .name-btn:hover { text-decoration:underline; text-underline-offset:3px; }
   .name-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:3px; }
   .sub { font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .c-broker > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* live cloud status, under the VM name */
+  .vstat { display:flex; align-items:center; gap:8px; min-width:0; font-size:13px; white-space:nowrap; }
+  .vstat .ip { color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
+  .st { display:inline-flex; align-items:center; gap:6px; font-weight:600; color:var(--muted); }
+  .st i { width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
+  .st-go { color:var(--go); } .st-pre { color:var(--pre); } .st-stop { color:var(--stop); }
+  .st-none i { background:transparent; box-shadow:inset 0 0 0 1.5px currentColor; }
+  .st-busy i { animation:blink 1.1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity:.2; } }
   .c-acts { display:flex; gap:6px; justify-content:flex-end; }
   .empty { padding:40px 18px; text-align:center; }
   .empty p { margin:0 0 12px; color:var(--muted); font-size:16px; }
@@ -256,6 +266,9 @@
     .meta [data-label]::before { content:attr(data-label) " "; color:var(--muted); }
     .c-acts { grid-area:acts; justify-content:flex-start; }
     .sheet-bar { padding:14px; }
+    .sheet-bar .grow { display:none; }
+    .sheet-bar > div:first-child { flex-basis:100%; }
+    .seg { order:4; }
     .search { order:5; width:100%; } .search input[type=search] { width:100%; }
     .clock-t { font-size:52px; }
     .day { padding:18px 16px 14px; border-radius:14px; }
@@ -346,6 +359,7 @@
           <button type="button" data-f="on" aria-pressed="false">Deploying</button>
           <button type="button" data-f="off" aria-pressed="false">Off</button>
         </div>
+        <button type="button" class="btn" id="refreshStatus" title="Ask Azure and AWS for each VM's current state (takes about a minute)">Refresh status</button>
         <button type="button" class="btn btn-go" id="addBtn">Add VM</button>
       </div>
       <div class="cols vh">
@@ -460,6 +474,9 @@ const PATH = 'config.yaml';
 const BRANCH = 'main';
 const GH = `https://api.github.com/repos/${REPO}`;
 const API = `${GH}/contents/${encodeURIComponent(PATH)}`;
+// Live VM states, written by Get-TradingVmStatus.ps1 (end of every provision /
+// destroy run, and the vm-status.yml workflow behind Refresh status).
+const STATUS_API = `${GH}/contents/status.json?ref=fleet-status`;
 
 // Per-VM azure overrides for non-default regions. Central India = no override
 // (inherits common.azure). UK South / West India point at that region's snapshot
@@ -537,10 +554,15 @@ const BROKERS = {
 };
 
 let doc = null, sha = null, vmsNode = null, dirty = false, lastCommit = '', tokenBad = '';
+// Unsaved edits as replayable ops (see applyOp); lastLoad = when the doc last matched GitHub.
+let ops = [], lastLoad = 0;
 let sortCol = null, sortDir = 1, filterText = '', filterMode = 'all';
 // Whether each workflow's cron is live (true), commented out (false) or unknown (null).
 const sched = { provision: null, destroy: null };
 let runsTimer = null;
+// status.json (null until loaded / when the fleet-status branch doesn't exist yet),
+// and the workflow runs still queued or running (newest first).
+let vmStatus = null, activeRuns = [];
 
 const $ = s => document.querySelector(s);
 const log = (m, cls='') => { $('#log').innerHTML = `<span class="${cls}">${m}</span>`; };
@@ -607,10 +629,14 @@ function updateBrokerFields(){
   }
 }
 
-async function load(){
+// no-store: GitHub lets browsers cache this for 60 s, and a cached (old) sha makes the next save conflict.
+const getConfig = () => fetch(`${API}?ref=${BRANCH}`,{headers:H(),cache:'no-store'});
+
+// quiet = background refresh: no log lines, and skipped if edits started meanwhile.
+async function load(quiet=false){
   if(!tok()){ refreshTokUI(); return log('Connect a GitHub token to manage the fleet.'); }
-  log('Loading config.yaml…');
-  let r; try{ r=await fetch(`${API}?ref=${BRANCH}`,{headers:H()}); }
+  if(!quiet) log('Loading config.yaml…');
+  let r; try{ r=await getConfig(); }
   catch(e){ return log('Could not reach GitHub ('+esc(e.message)+'). Check your connection, then click Reload.','err'); }
   if(r.status===401 || r.status===404){
     tokenBad = r.status===401 ? 'GitHub rejected this token. It may have expired, so paste a new one.'
@@ -619,11 +645,14 @@ async function load(){
   }
   if(!r.ok) return log('Loading failed ('+r.status+'): '+esc(await r.text()),'err');
   tokenBad='';
-  const j=await r.json(); sha=j.sha;
+  const j=await r.json();
+  if(quiet && (dirty || saving)) return;
+  sha=j.sha; ops=[]; lastLoad=Date.now();
   doc=YAML.parseDocument(b64decode(j.content));
   vmsNode=doc.get('vms');
   if(!vmsNode||!vmsNode.items) return log('config.yaml has no vms: list.','err');
   refreshTokUI(); $('#app').hidden=false; render(); markDirty(false);
+  if(quiet) return;
   log('Loaded '+plural(vmsNode.items.length,'VM')+' from config.yaml.','ok');
   loadSchedules(); loadRuns();
 }
@@ -679,18 +708,83 @@ function runState(x){
   if(x.status!=='completed') return x.status==='in_progress' ? ['run','Running'] : ['wait','Queued'];
   return ({success:['ok','Succeeded'],failure:['bad','Failed'],cancelled:['mut','Cancelled'],skipped:['mut','Skipped']})[x.conclusion] || ['mut',x.conclusion||'Done'];
 }
+// Also reloads the VM status, since every provision/destroy run ends by refreshing it.
+let lastTrigger = 0;
 async function loadRuns(){
   clearTimeout(runsTimer);
-  let r; try{ r=await fetch(`${GH}/actions/runs?per_page=4`,{headers:H()}); }catch{ return; }
-  if(!r.ok){ $('#runs').hidden=true; return; }
-  const runs=(await r.json()).workflow_runs||[];
-  $('#runs').hidden=!runs.length;
-  $('#runList').innerHTML=runs.map(x=>{ const [k,t]=runState(x);
-    return `<li><span class="dot d-${k}"></span><span>${esc(x.name)}</span><span class="rs">${t}</span>`+
-      `<span class="rt">${x.event==='schedule'?'Scheduled':'Manual'}, ${ago(x.run_started_at||x.created_at)}</span>`+
-      `<a href="${esc(x.html_url)}" target="_blank" rel="noopener">View</a></li>`; }).join('');
-  // Keep polling while anything is queued or running.
-  if(runs.some(x=>x.status!=='completed')) runsTimer=setTimeout(loadRuns,20000);
+  let r; try{ r=await fetch(`${GH}/actions/runs?per_page=20`,{headers:H(),cache:'no-store'}); }catch{ r=null; }
+  if(r && r.ok){
+    const runs=(await r.json()).workflow_runs||[];
+    activeRuns=runs.filter(x=>x.status!=='completed');
+    // Latest 4; finished status checks are routine, so they're left out.
+    const shown=runs.filter(x=>x.status!=='completed' || x.name!=='Check VM status').slice(0,4);
+    $('#runs').hidden=!shown.length;
+    $('#runList').innerHTML=shown.map(x=>{ const [k,t]=runState(x);
+      return `<li><span class="dot d-${k}"></span><span>${esc(x.display_title||x.name)}</span><span class="rs">${t}</span>`+
+        `<span class="rt">${x.event==='schedule'?'Scheduled':'Manual'}, ${ago(x.run_started_at||x.created_at)}</span>`+
+        `<a href="${esc(x.html_url)}" target="_blank" rel="noopener">View</a></li>`; }).join('');
+  } else if(r){ $('#runs').hidden=true; activeRuns=[]; }
+  await loadStatus();
+  // Keep polling while anything is queued or running, and for a minute after
+  // triggering one (a new run can take a few seconds to be listed).
+  if(activeRuns.length || Date.now()-lastTrigger<60000) runsTimer=setTimeout(loadRuns,activeRuns.length?20000:8000);
+}
+
+// ---------- live VM status ----------
+async function loadStatus(){
+  let r; try{ r=await fetch(STATUS_API,{headers:H(),cache:'no-store'}); }catch{ r=null; }
+  if(r && r.ok){ try{ vmStatus=JSON.parse(b64decode((await r.json()).content)); }catch{ vmStatus=null; } }
+  else if(r && r.status===404) vmStatus=null;   // no check has run yet
+  paintStatus();
+}
+// A queued/running provision or destroy aimed at this VM wins over the last cloud
+// check (newest run first). Runs are matched on their title, set by run-name in
+// the workflows: "Provision <vm>" / "Delete all VMs"; dry runs change nothing.
+function statusOf(it){
+  const name=String(fld(it,'name'));
+  if(!name) return null;
+  for(const x of activeRuns){
+    const m=/^(Provision|Delete) (.+?)( \(dry run\))?$/.exec(x.display_title||'');
+    if(!m || m[3]) continue;
+    const prov=m[1]==='Provision', all=m[2]==='all VMs';
+    if(m[2]!==name && !(all && (!prov || isOn(it)))) continue;   // a fleet Start skips VMs set to off
+    const queued=x.status!=='in_progress';
+    return prov ? (queued?'queued-start':'starting') : (queued?'queued-delete':'deleting');
+  }
+  const s=vmStatus && vmStatus.vms && vmStatus.vms[name];
+  return s ? s.state : (vmStatus ? 'unchecked' : null);
+}
+const ST = {
+  running:['st-go','Running'], starting:['st-pre st-busy','Starting…'], stopping:['st-pre st-busy','Stopping…'],
+  deleting:['st-stop st-busy','Deleting…'], 'queued-start':['st-pre st-none','Queued to start'],
+  'queued-delete':['st-stop st-none','Queued to delete'], stopped:['st-pre','Stopped, still billed'],
+  deallocated:['','Stopped'], deleted:['st-none','Deleted'], failed:['st-stop','Failed'],
+  unknown:['','Unknown'], unchecked:['st-none','Not checked yet'],
+};
+function statusHtml(it){
+  const k=statusOf(it); if(!k) return '';
+  const [cls,label]=ST[k]||ST.unknown;
+  const s=vmStatus && vmStatus.vms && vmStatus.vms[String(fld(it,'name'))];
+  const ip=(k==='running'||k==='stopped') && s && s.ip ? `<span class="ip num">${esc(s.ip)}</span>` : '';
+  return `<span class="st ${cls}"><i></i>${label}</span>${ip}`;
+}
+// Repaint just the status cells + counts (no list re-render, so nothing jumps).
+function paintStatus(){
+  if(!vmsNode) return;
+  const checked = vmStatus && vmStatus.checkedAt ? 'Checked '+ago(vmStatus.checkedAt) : '';
+  document.querySelectorAll('.vstat[data-st]').forEach(el=>{
+    const it=vmsNode.items[+el.dataset.st]; if(!it) return;
+    el.innerHTML=statusHtml(it); el.title=checked;
+  });
+  // Busy while a check runs, and for the few seconds before GitHub lists a new one.
+  const checking = activeRuns.some(x=>x.name==='Check VM status') || Date.now()-checkAsked<15000;
+  $('#refreshStatus').disabled=checking; $('#refreshStatus').textContent=checking?'Checking…':'Refresh status';
+  renderCounts();
+}
+let checkAsked = 0;
+async function refreshStatus(){
+  checkAsked=Date.now(); paintStatus();
+  if(!(await trigger('vm-status.yml',{},'Checking VM status'))){ checkAsked=0; paintStatus(); }
 }
 
 // ---------- VM list ----------
@@ -730,11 +824,9 @@ function rowHtml(it,i){
   const on=isOn(it), name=fld(it,'name'), nm=esc(name||'Unnamed VM'), b=brokerOf(it), spec=BROKERS[b];
   const bMain = b==='mt5' ? fld(it,'mt5.server') : (spec ? spec.label : b);
   const bSub  = b==='mt5' ? '' : (spec&&spec.extra ? fld(it,'env.'+spec.extra.key) : '');
-  // Public IP is automatic: <name>-pip (Azure) / <name>-eip (AWS).
-  const ip = name ? name+(isAws(it)?'-eip':'-pip') : '';
   return `<div class="cols vr${on?'':' off'}">`+
     `<div class="c-sw"><input type="checkbox" class="sw" role="switch" data-i="${i}" ${on?'checked':''} aria-label="Deploy ${nm}"></div>`+
-    `<div class="c-name"><button type="button" class="name-btn" data-edit="${i}" title="Edit ${nm}">${nm}</button>${ip?`<span class="sub">IP ${esc(ip)}</span>`:''}</div>`+
+    `<div class="c-name"><button type="button" class="name-btn" data-edit="${i}" title="Edit ${nm}">${nm}</button><span class="vstat" data-st="${i}">${statusHtml(it)}</span></div>`+
     `<div class="meta">`+
       `<div class="c-broker"><span>${esc(bMain)}</span>${bSub?`<span class="sub">${esc(bSub)}</span>`:''}</div>`+
       `<div class="num" data-label="Login">${esc(brokerLogin(it))}</div>`+
@@ -757,13 +849,15 @@ function render(){
       !items.length ? `<div class="empty"><p>No VMs yet. Add the first one to start building the fleet.</p><button type="button" class="btn btn-go" data-add>Add VM</button></div>`
     : !shown.length ? `<div class="empty"><p>No VMs match this search or filter.</p><button type="button" class="btn" data-clear>Show all VMs</button></div>`
     : shown.map(i=>rowHtml(items[i],i)).join('');
-  updateSortIndicators(); renderCounts();
+  updateSortIndicators(); paintStatus();
 }
 // Counts, fleet buttons and Kite usage: refreshed on every deploy toggle without
 // re-rendering the list (so a row doesn't vanish under the cursor while filtered).
 function renderCounts(){
   const items=vmsNode.items, on=items.filter(isOn).length, named=items.filter(it=>fld(it,'name')).length;
-  $('#fleetCount').textContent=`${on} of ${plural(items.length,'VM')} set to deploy`;
+  const live = !vmStatus ? ' Live status not checked yet.'
+    : ` ${items.filter(it=>statusOf(it)==='running').length} running, checked ${ago(vmStatus.checkedAt)}.`;
+  $('#fleetCount').textContent=`${on} of ${plural(items.length,'VM')} set to deploy.${live}`;
   $('#runProvision').innerHTML=`${ICON.play}Start ${plural(on,'VM')}`; $('#runProvision').disabled=!on;
   $('#runDestroy').innerHTML=`${ICON.stop}Delete all ${named}`; $('#runDestroy').disabled=!named;
   renderKiteSummary();
@@ -782,20 +876,87 @@ function renderKiteSummary(){
 }
 
 // ---------- save ----------
-// Commit the in-memory config.yaml. Resolves true on success, false on any
-// failure (already logged) so callers like dispatch() can stop before running a
-// workflow against a stale config.
-async function save(){
+// Every edit to config.yaml is an op, applied by applyOp and kept in `ops` until
+// saved, so a save that conflicts can replay the pending ops onto the latest file.
+// VMs are found by name (names are unique); the index is a hint for unnamed ones.
+function findVm(op){
+  const items=vmsNode.items;
+  if(op.i!=null && items[op.i] && String(fld(items[op.i],'name'))===op.name) return op.i;
+  return items.findIndex(it=>String(fld(it,'name'))===op.name);
+}
+const nameTaken = (name, except) => vmsNode.items.some((it,j)=>j!==except && String(fld(it,'name')).toLowerCase()===name.toLowerCase());
+// Resolves '' when applied, else why it can't be (only possible when replaying).
+function applyOp(op){
+  const i=findVm(op), gone=`${op.name||'an unnamed VM'} is no longer in config.yaml`;
+  const nn=op.vals ? op.vals.vmname.value.trim() : '';
+  switch(op.t){
+    case 'enabled': if(i<0) return gone; vmsNode.items[i].set('enabled',op.on); return '';
+    case 'edit':    if(i<0) return gone; if(nameTaken(nn,i)) return `another VM is already called ${nn}`;
+                    applyFields(vmsNode.items[i],op.vals); return '';
+    case 'add': {   if(nameTaken(nn,-1)) return `a VM called ${nn} already exists`;
+                    const item=doc.createNode({}); item.set('enabled',true); applyFields(item,op.vals); vmsNode.add(item); return ''; }
+    case 'remove':  if(i>=0) vmsNode.items.splice(i,1); return '';   // already gone is fine
+  }
+}
+function change(op){ applyOp(op); ops.push(op); markDirty(true); }
+// applyFields reads f.<field>.value, so a snapshot of the form replays like the form.
+const snap = f => Object.fromEntries([...f.elements].filter(e=>e.name).map(e=>[e.name,{value:e.value}]));
+
+// config.yaml changed on GitHub since we last read it (another tab, device or
+// person saved). Fetch the latest and replay the pending ops on top. Resolves ''
+// on success, else why the changes can't be merged (the local doc is untouched).
+async function rebase(){
+  let j;
+  for(let t=0; t<4; t++){
+    const r=await getConfig();
+    if(!r.ok) return `loading the latest version failed (${r.status})`;
+    j=await r.json();
+    if(j.sha!==sha) break;
+    await new Promise(res=>setTimeout(res,1500));   // GitHub can serve the old file for a moment after a write
+  }
+  if(j.sha===sha) return 'GitHub kept returning the old version';
+  const old={doc,vmsNode};
+  doc=YAML.parseDocument(b64decode(j.content)); vmsNode=doc.get('vms');
+  const err = (!vmsNode||!vmsNode.items) ? 'the latest config.yaml has no vms: list'
+            : ops.reduce((e,op)=>e||applyOp(op),'');
+  if(err){ ({doc,vmsNode}=old); return err; }
+  sha=j.sha; render(); return '';
+}
+
+// Commit the in-memory config.yaml. Saves run one at a time (overlapping PUTs
+// with the same sha would conflict with each other). Resolves true on success,
+// false on any failure (already logged) so callers like dispatch() can stop
+// before running a workflow against a stale config.
+let saveQ=Promise.resolve(), saving=0;
+function save(){
+  saving++;
+  const p=saveQ.then(saveNow).finally(()=>saving--);
+  saveQ=p.catch(()=>{});
+  return p;
+}
+async function saveNow(){
   if(!doc) return false;
+  if(!dirty) return true;   // an earlier queued save already committed everything
   log('Saving config.yaml…');
-  const body={message:'dashboard: update fleet deploy/config',content:b64encode(doc.toString()),sha,branch:BRANCH};
-  let r; try{ r=await fetch(API,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)}); }
-  catch(e){ log('Could not reach GitHub ('+esc(e.message)+'). Your changes are still here; try Save changes again.','err'); return false; }
-  if(r.status===409){ log('Someone else changed config.yaml on GitHub. Click Reload to get the latest version, then redo your change.','err'); return false; }
-  if(!r.ok){ log('Saving failed ('+r.status+'): '+esc(await r.text()),'err'); return false; }
-  const j=await r.json(); sha=j.content.sha; lastCommit=j.commit.sha.slice(0,7); markDirty(false);
-  log(`Saved config.yaml (commit ${lastCommit}).`,'ok');
-  return true;
+  let merged=false;
+  for(let attempt=0;; attempt++){
+    const n=ops.length;   // ops made while this PUT is in flight stay pending
+    const body={message:'dashboard: update fleet deploy/config',content:b64encode(doc.toString()),sha,branch:BRANCH};
+    let r; try{ r=await fetch(API,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+    catch(e){ log('Could not reach GitHub ('+esc(e.message)+'). Your changes are still here; try Save changes again.','err'); return false; }
+    if(r.status===409 && attempt<3){
+      log('config.yaml changed on GitHub. Adding your changes to the latest version…');
+      let err; try{ err=await rebase(); }catch(e){ err='GitHub could not be reached ('+e.message+')'; }
+      if(err){ log(`config.yaml changed on GitHub and your changes can't be added to it: ${esc(err)}. Click Reload to get the latest version, then redo your change.`,'err'); return false; }
+      merged=true; continue;
+    }
+    if(r.status===409){ log('config.yaml keeps changing on GitHub. Your changes are still here; try Save changes again in a moment.','err'); return false; }
+    if(!r.ok){ log('Saving failed ('+r.status+'): '+esc(await r.text()),'err'); return false; }
+    const j=await r.json(); sha=j.content.sha; lastCommit=j.commit.sha.slice(0,7); lastLoad=Date.now();
+    ops=ops.slice(n); markDirty(ops.length>0);
+    log(`Saved config.yaml (commit ${lastCommit}).`+(merged?' It had changed on GitHub, so your changes were added on top of the latest version.':''),'ok');
+    return true;
+  }
 }
 
 // Write the form's fields onto a VM map node (shared by add + edit). Region
@@ -912,9 +1073,9 @@ async function submitForm(e){
   if(vmsNode.items.some((it,j)=>String(fld(it,'name')).toLowerCase()===name.toLowerCase() && String(j)!==idx)){
     f.vmname.setCustomValidity('A VM with this name already exists.'); f.vmname.reportValidity(); return;
   }
-  if(isNew){ const item=doc.createNode({}); item.set('enabled',true); applyFields(item,f); vmsNode.add(item); }
-  else applyFields(vmsNode.items[+idx],f);
-  $('#editor').close(); render(); markDirty(true);
+  if(isNew) change({t:'add',vals:snap(f)});
+  else change({t:'edit',i:+idx,name:String(fld(vmsNode.items[+idx],'name')),vals:snap(f)});
+  $('#editor').close(); render();
   if(!isNew) return log(`Updated ${esc(name)}. Click Save changes to save it.`,'ok');
   if(await save()) log(`Added ${esc(name)} and saved it (commit ${lastCommit}).`,'ok');
 }
@@ -944,11 +1105,16 @@ async function dispatch(workflow, inputs, what){
     $('#log').insertAdjacentHTML('beforeend',`<br><span class="err">${esc(what)} did not start because config.yaml couldn't be saved.</span>`);
     return false;
   }
+  return trigger(workflow, inputs, what);
+}
+// The workflow_dispatch call itself, with no save first (the status check uses it directly).
+async function trigger(workflow, inputs, what){
+  if(!tok()){ log('Connect a token first.','err'); return false; }
   log(`Asking GitHub to start: ${esc(what)}…`);
   const url=`${GH}/actions/workflows/${workflow}/dispatches`;
   let r; try{ r=await fetch(url,{method:'POST',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify({ref:BRANCH,inputs})}); }
   catch(e){ log('Could not reach GitHub ('+esc(e.message)+').','err'); return false; }
-  if(r.status===204){ log(`${esc(what)} has started. ${runsLink}`,'ok'); setTimeout(loadRuns,4000); return true; }
+  if(r.status===204){ log(`${esc(what)} has started. ${runsLink}`,'ok'); lastTrigger=Date.now(); setTimeout(loadRuns,4000); return true; }
   if(r.status===403) log('GitHub refused (403). This token needs <b>Actions: Read and write</b>. Create a new token with it and reconnect.','err');
   else if(r.status===404) log('Workflow not found (404), or this token has no Actions access.','err');
   else log(`GitHub rejected the request (${r.status}): `+esc(await r.text()),'err');
@@ -982,7 +1148,7 @@ async function startVm(i){
     body:`<p>Provisions ${esc(name)} now.</p>`+
       (on?'':`<p>Deploy is off for this VM. It will be turned on and saved first, because the provisioner skips VMs that aren't set to deploy.</p>`)+
       savedP()+dryP()})) return;
-  if(!on){ it.set('enabled',true); render(); markDirty(true); }
+  if(!on){ change({t:'enabled',i,name:String(name),on:true}); render(); }
   dispatch('provision-vm.yml',wfInputs(name),`Provisioning ${name}`);
 }
 // Per-row Delete: tear down just this VM's cloud resources (VM + disk + NIC;
@@ -1012,9 +1178,11 @@ async function deleteVm(i){
     return;
   }
   if(dry) return;
-  const idx=vmsNode.items.indexOf(it); if(idx<0) return;
-  vmsNode.items.splice(idx,1);
-  render(); markDirty(true);
+  // By name: the save inside dispatch() may have rebased onto a newer config.yaml.
+  const op={t:'remove',i:vmsNode.items.indexOf(it),name:String(name)};
+  if(findVm(op)<0) return;
+  change(op);
+  render();
   if(await save()) log(`${name?`Deleting ${esc(name)} has started, and it`:'The VM'} was removed from config.yaml (commit ${lastCommit}). ${name?runsLink:''}`,'ok');
 }
 
@@ -1040,9 +1208,10 @@ $('#rowMenu').addEventListener('click',e=>{
 // ---------- wiring ----------
 $('#vmRows').addEventListener('change',e=>{
   const cb=e.target.closest('input.sw'); if(!cb) return;
-  vmsNode.items[+cb.dataset.i].set('enabled',cb.checked);
+  const i=+cb.dataset.i;
+  change({t:'enabled',i,name:String(fld(vmsNode.items[i],'name')),on:cb.checked});
   cb.closest('.vr').classList.toggle('off',!cb.checked);
-  markDirty(true); renderCounts();
+  renderCounts();
 });
 $('#vmRows').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b) return;
@@ -1082,6 +1251,7 @@ $('#discard').onclick=async()=>{
 };
 $('#save').onclick=save;
 $('#addBtn').onclick=()=>openEditor(null);
+$('#refreshStatus').onclick=refreshStatus;
 $('#addForm').addEventListener('submit',submitForm);
 $('#addForm').vmname.addEventListener('input',e=>e.target.setCustomValidity(''));
 $('#cancelEdit').onclick=()=>$('#editor').close();
@@ -1096,8 +1266,16 @@ $('#brokerSel').addEventListener('change',updateBrokerFields);
 updateBrokerFields();
 
 window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
+// Coming back to this tab: quietly pick up changes saved elsewhere (another tab,
+// device or person), so the list is current and the next save starts from it.
+// Runs and VM status are refreshed every time.
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible' || !doc || tokenBad) return;
+  loadRuns();
+  if(!dirty && !saving && !document.querySelector('dialog[open]') && Date.now()-lastLoad>15000) load(true);
+});
 
-buildTrack(); renderDay(); setInterval(renderDay,30000);
+buildTrack(); renderDay(); setInterval(()=>{ renderDay(); if(vmsNode) renderCounts(); },30000);   // also ages "checked N min ago"
 refreshTokUI(); load();
 </script>
 </body>
